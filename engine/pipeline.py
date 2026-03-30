@@ -27,6 +27,11 @@ def run_pipeline(
     progress_cb: Optional[Callable] = None,
 ) -> tuple:
     profile = _load_profile(config_path)
+
+    # Drop completely empty rows and rows where name is blank
+    df = df.dropna(how="all")
+    df = df[df["name"].astype(str).str.strip().str.len() > 1].reset_index(drop=True)
+
     results, raw_stage1 = [], []
     total = len(df)
 
@@ -48,7 +53,7 @@ def run_pipeline(
         # Stage 0 — Company lookup
         if progress_cb: progress_cb(idx, total, f"Stage 0 — company lookup: {name}")
         known_co = str(row.get("known_company", "")).strip()
-        if known_co and known_co.lower() != "nan":
+        if known_co and known_co.lower() not in ("nan", ""):
             company, conf, strategy = known_co, 1.0, "provided"
         else:
             lk = lookup_company(name, function, serper_key)
