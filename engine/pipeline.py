@@ -1,7 +1,7 @@
-import time
+import time, re
 import pandas as pd
 from typing import Optional, Callable
-from .stage0_serper import lookup_company
+from .stage0_serper import lookup_company, _extract_from_headline
 from .stage1_gemini import scan_company
 from .stage2_gemini import generate_message
 
@@ -28,7 +28,6 @@ def run_pipeline(
 ) -> tuple:
     profile = _load_profile(config_path)
 
-    # Drop completely empty rows and rows where name is blank
     df = df.dropna(how="all")
     df = df[df["name"].astype(str).str.strip().str.len() > 1].reset_index(drop=True)
 
@@ -37,11 +36,14 @@ def run_pipeline(
 
     for idx, row in df.iterrows():
         name         = str(row.get("name", "")).strip()
-        function     = str(row.get("known_function", "")).strip()
-        closeness    = int(row.get("closeness_level", 1))
+        raw_function = str(row.get("known_function", "")).strip()
+        closeness    = int(row.get("closeness_level", 3))
         sit_override = str(row.get("company_situation", "")).strip()
 
-        rec = dict(name=name, known_function=function, closeness_level=closeness,
+        # Extract clean function title from LinkedIn headline
+        clean_func, _ = _extract_from_headline(raw_function)
+
+        rec = dict(name=name, known_function=clean_func, closeness_level=closeness,
                    company="", company_confidence=0.0, lookup_strategy="",
                    review_flag="", RC_score=0, RC_status="UNCLEAR", RC_signal="",
                    MP_score=0, MP_status="UNCLEAR", MP_signal="",
@@ -56,11 +58,12 @@ def run_pipeline(
         if known_co and known_co.lower() not in ("nan", ""):
             company, conf, strategy = known_co, 1.0, "provided"
         else:
-            lk = lookup_company(name, function, serper_key)
+            lk = lookup_company(name, raw_function, serper_key)
             company  = lk.get("company") or ""
             conf     = lk.get("confidence", 0.0)
             strategy = lk.get("strategy", "")
-            time.sleep(SERPER_PAUSE)
+            if strategy != "headline_parse":
+                time.sleep(SERPER_PAUSE)
 
         rec.update(company=company, company_confidence=conf, lookup_strategy=strategy)
         if conf < LOW_CONF:
@@ -92,11 +95,11 @@ def run_pipeline(
         summary = (sit_override if sit_override and sit_override.lower() != "nan"
                    else rec["company_summary"])
 
-        # Stage 2 — Message generation (Gemini)
+        # Stage 2 — Message generation
         if progress_cb: progress_cb(idx, total, f"Stage 2 — writing message for {name}...")
         try:
             rec["linkedin_message"] = generate_message(
-                name=name, company=company, function=function,
+                name=name, company=company, function=clean_func,
                 closeness_level=closeness, active_situations=active_situations,
                 company_summary=summary, ximpax_profile=profile,
                 gemini_api_key=gemini_key,
