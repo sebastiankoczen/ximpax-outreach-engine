@@ -1,73 +1,83 @@
 import time
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 MODEL = "gemini-2.0-flash"
 PAUSE = 0.5
 
 CAPABILITIES = {
-    "RC":  "Embedded experts, task-force staffing, day-one deployment — senior SC/procurement talent that integrates without onboarding overhead.",
-    "MP":  "Category management, Source-to-Pay optimisation, indirect spend programmes — delivering measurable savings within the engagement.",
-    "SG":  "IBP/S&OP design, demand planning, network design, M&A integration — building operating models that sustain growth.",
-    "SCD": "Network resilience, nearshoring strategy, make-vs-buy analysis, logistics re-routing — SC design built for volatility.",
+    "RC":  "We place experienced SC/procurement people directly inside teams — they hit the ground running, no handholding needed.",
+    "MP":  "We run category reviews, supplier negotiations and spend analysis that deliver real savings, fast.",
+    "SG":  "We help companies build the planning and procurement muscle to scale — S&OP design, network strategy, M&A integration.",
+    "SCD": "We help redesign supply chains for resilience — nearshoring, alternative sourcing, make-vs-buy.",
 }
 
-# Scale: 1 = closest (warm/direct), 3 = least known (formal/careful)
+# 1 = closest contact, 3 = barely know them
 CLOSENESS = {
-    1: ("Close Contact",      "Warm, direct, candid — skip formal pleasantries, they know you well."),
-    2: ("Professional",       "Collegial and direct. Reference shared professional ground. Moderate warmth."),
-    3: ("Acquaintance",       "Professional and respectful. Be thoughtful — they barely know you. No familiarity. Formal but human."),
+    1: ("Close", "Write like you're texting a friend you respect. Skip all formalities. Get straight to it. Short sentences."),
+    2: ("Professional", "Collegial. Like catching up with a former colleague. Warm but not overfamiliar. Direct."),
+    3: ("Acquaintance", "You barely know this person. Be human and credible, not salesy. No buzzwords. No corporate speak. Don't over-explain XIMPAX. One simple idea, one question."),
 }
 
-SYSTEM_INSTRUCTION = """You are a senior business development writer for XIMPAX, a boutique supply chain and procurement consultancy in Switzerland.
+SYSTEM_INSTRUCTION = """You write short LinkedIn messages for Sebastian Koczen, founder of XIMPAX, a small Swiss consultancy that helps companies with supply chain and procurement.
 
-Rules for the LinkedIn message:
-- 80-120 words maximum
-- Do NOT start with "Hi [Name]," — lead with a relevant business insight or observation about their company
-- Reference specific company situation signals if available
-- Position XIMPAX naturally — never pushy, never salesy
-- End with ONE soft CTA (e.g. "Would a brief call make sense?" or "Happy to share what we're seeing if useful.")
-- Match tone precisely to the closeness level — a level 3 (acquaintance) must feel measured and credible, not overfamiliar
-- Sound human and specific — never templated or generic
-- Write ONLY the message body — no subject line, no labels, no "Message:" prefix"""
+YOUR WRITING RULES — follow every single one:
+- MAX 80 words. Count them.
+- Sound like a real person, not a consultant writing a brochure
+- NO buzzwords: no "resilience", "optimise", "leverage", "solutions", "differentiator", "value proposition", "stakeholders"
+- NO phrases like "I wanted to reach out", "I hope this finds you well", "observing the current landscape"
+- Start with something specific and real about THEIR company or role — not a generic industry observation
+- XIMPAX gets ONE mention, max. Don't describe what we do in detail — one short sentence is enough
+- End with a single low-pressure question like "Worth a quick chat?" or "Keen to hear your take."
+- Match tone exactly to closeness level — a level 3 must feel like a cold message from someone credible, not a sales pitch
+- Write ONLY the message. No labels, no subject line, nothing else.
+
+XIMPAX context (use sparingly):
+{ximpax_profile}"""
 
 
 def _situation_block(active: list) -> str:
     if not active:
-        return "No strong signals found — use a general SC/procurement observation relevant to their industry."
+        return "No signals found — base the message on what is likely relevant for their role and industry."
     lines = []
     for s in active:
-        lines.append(
-            f"• {s['label']} ({s['status']}, score {s['score']}): {s['signal']}\n"
-            f"  XIMPAX angle: {CAPABILITIES.get(s['code'], '')}"
-        )
+        lines.append(f"• {s['label']} ({s['status']}): {s['signal']}\n  Use this angle: {CAPABILITIES.get(s['code'], '')}")
     return "\n".join(lines)
 
 
 def generate_message(name, company, function, closeness_level,
                      active_situations, company_summary,
                      ximpax_profile, gemini_api_key) -> str:
-    genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel(
-        model_name=MODEL,
-        system_instruction=SYSTEM_INSTRUCTION + f"\n\nXIMPAX PROFILE:\n{ximpax_profile}",
-    )
+    client = genai.Client(api_key=gemini_api_key)
     cl_label, cl_tone = CLOSENESS.get(closeness_level, CLOSENESS[3])
-    prompt = f"""Contact: {name} | {function} @ {company}
-Closeness: {closeness_level} — {cl_label}
-Tone guidance: {cl_tone}
+    system = SYSTEM_INSTRUCTION.format(ximpax_profile=ximpax_profile)
 
-Company situation (from research):
-{company_summary if company_summary else "No research data — use general industry angle."}
+    prompt = f"""Write a LinkedIn message from Sebastian to:
 
-Active signals to reference:
+Name: {name}
+Title: {function}
+Company: {company}
+Closeness level: {closeness_level} ({cl_label}) — {cl_tone}
+
+What we know about {company}:
+{company_summary if company_summary else "No research available — use what you know about the company/industry."}
+
+Signals to potentially reference:
 {_situation_block(active_situations)}
 
-Write only the message body. Be specific to this person and company."""
+Remember: MAX 80 words. Real and human. No buzzwords. One mention of XIMPAX max."""
 
     try:
-        resp = model.generate_content(prompt)
+        resp = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                temperature=0.8,
+            )
+        )
         return resp.text.strip()
     except Exception as e:
-        return f"[Error generating message: {e}]"
+        return f"[Error: {e}]"
     finally:
         time.sleep(PAUSE)
