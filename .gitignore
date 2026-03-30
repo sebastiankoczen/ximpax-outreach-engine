@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+output/
+*.xlsx
+*.csv
+!contacts_sample.csv
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+venv/
+.venv/
