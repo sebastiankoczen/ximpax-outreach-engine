@@ -1,28 +1,51 @@
 import re, time, requests
 
 SERPER_URL = "https://google.serper.dev/search"
-STOPWORDS = {"of","the","and","in","at","for","a","an","to","with","is","are","by","as","bei","chez","at","van","de"}
+STOPWORDS = {"of","the","and","in","at","for","a","an","to","with","is","are","by","as","bei","van","de"}
+
+# Words that indicate education, not a company — skip these in headline extraction
+EDU_BLACKLIST = {
+    "university","université","universität","hochschule","fachhochschule","fhnw","eth",
+    "epfl","hsg","uzh","masters","master","bachelor","mba","phd","studies","school",
+    "college","institute","academy","alumni","student","graduating",
+}
+
+def _is_edu(name: str) -> bool:
+    words = set(name.lower().split())
+    return bool(words & EDU_BLACKLIST) or any(k in name.lower() for k in EDU_BLACKLIST)
+
 
 def _extract_from_headline(headline: str):
     """
-    LinkedIn headlines look like:
-    "Head of SC at Nestle | Certified..."
-    "Supply Chain Director bei Lonza | Masters..."
-    "VP Procurement - AB InBev"
-    Extract (clean_function, company) from them.
+    Extract (clean_function, company) from a LinkedIn headline.
+    Handles: "Head of SC at Nestle | ...", "Director bei Lonza | ...", "Title - Company"
+    Skips educational institutions.
     """
-    # Try "at CompanyName" or "bei CompanyName" or "@ CompanyName"
-    m = re.search(r"(?:\bat\b|\bbei\b|\bchez\b|@)\s+([A-Z][^|\-–]{2,50}?)(?:\s*[|\-–]|\s*$)", headline, re.I)
-    if m:
-        company = m.group(1).strip().rstrip(".,")
-        # Clean function: everything before the keyword
-        func_part = headline[:m.start()].strip().rstrip("-–|, ")
-        return func_part, company
-    # Try "Title - Company" pattern (dash separator, company is Title Case)
-    m2 = re.search(r"^(.+?)\s*[-–]\s*([A-Z][A-Za-z0-9\s&\.]{2,40}?)(?:\s*[|]|\s*$)", headline)
-    if m2:
-        return m2.group(1).strip(), m2.group(2).strip()
-    return headline, None
+    # Split on | and process segments
+    segments = [s.strip() for s in headline.split("|")]
+
+    for seg in segments:
+        # Try "Title at/bei/chez/@ Company"
+        m = re.search(
+            r"^(.+?)\s+(?:at|bei|chez|@)\s+([A-Z][^|\-–]{2,50}?)\s*$",
+            seg.strip(), re.I
+        )
+        if m:
+            company_candidate = m.group(2).strip().rstrip(".,")
+            if not _is_edu(company_candidate) and len(company_candidate) > 1:
+                func_part = m.group(1).strip()
+                return func_part, company_candidate
+
+        # Try "Title - Company" (dash, company is Title Case or all caps)
+        m2 = re.search(r"^(.+?)\s*[-–]\s*([A-Z][A-Za-z0-9\s&\.]{2,40}?)\s*$", seg)
+        if m2:
+            company_candidate = m2.group(2).strip()
+            if not _is_edu(company_candidate) and len(company_candidate) > 1:
+                return m2.group(1).strip(), company_candidate
+
+    # No company found in headline
+    clean_func = segments[0] if segments else headline
+    return clean_func, None
 
 
 def _kw(func: str, n: int = 3) -> str:
@@ -44,7 +67,7 @@ def lookup_company(name: str, function: str, api_key: str) -> dict:
         return {"company": None, "confidence": 0.0, "strategy": "empty_name",
                 "title_found": "", "snippet": ""}
 
-    # Try to extract company directly from the LinkedIn headline
+    # Try extracting company directly from LinkedIn headline first
     clean_func, inline_company = _extract_from_headline(function or "")
     if inline_company and len(inline_company) > 1:
         return {"company": inline_company, "confidence": 0.95,
@@ -53,7 +76,6 @@ def lookup_company(name: str, function: str, api_key: str) -> dict:
     parts = name.split()
     first = parts[0] if parts else name
     kw = _kw(clean_func)
-
     headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
 
     strategies = [
@@ -74,7 +96,7 @@ def lookup_company(name: str, function: str, api_key: str) -> dict:
                 company = (_company_from_title(title)
                            or _company_from_snippet(snippet)
                            or _company_from_snippet(title))
-                if company and len(company) > 1:
+                if company and len(company) > 1 and not _is_edu(company):
                     return {"company": company, "confidence": conf,
                             "strategy": label, "title_found": title, "snippet": snippet}
             time.sleep(0.3)
