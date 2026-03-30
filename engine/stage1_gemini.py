@@ -1,6 +1,6 @@
 import re, time
-import google.generativeai as genai
-from google.generativeai import protos
+from google import genai
+from google.genai import types
 
 MODEL = "gemini-2.0-flash"
 PAUSE = 15
@@ -59,13 +59,16 @@ def get_active(parsed: dict) -> list:
 
 
 def scan_company(company: str, api_key: str, industry_hint: str = "") -> dict:
-    genai.configure(api_key=api_key)
-    # Use the correct google_search tool (not google_search_retrieval)
-    tool = protos.Tool(google_search=protos.GoogleSearch())
-    model = genai.GenerativeModel(MODEL, tools=[tool])
+    client = genai.Client(api_key=api_key)
     prompt = PROMPT.format(company=company, industry_hint=industry_hint or "not specified")
     try:
-        resp = model.generate_content(prompt)
+        resp = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
+        )
         parsed = parse_result(resp.text)
     except Exception as e:
         parsed = parse_result("")
