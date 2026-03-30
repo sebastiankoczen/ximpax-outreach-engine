@@ -1,5 +1,6 @@
 import re, time
 import google.generativeai as genai
+from google.generativeai import protos
 
 MODEL = "gemini-2.0-flash"
 PAUSE = 15
@@ -18,11 +19,11 @@ Assess current signals for these 4 categories:
 Score: STRONG evidence = +2 | MEDIUM/implied = +1 | None = 0 (cap each at 10)
 
 Reply in this EXACT format:
-RC: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-MP: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-SG: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-SCD: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-SUMMARY: [2–3 sentence executive summary of main challenges/opportunities]
+RC: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1-2 sentence signal summary]
+MP: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1-2 sentence signal summary]
+SG: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1-2 sentence signal summary]
+SCD: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1-2 sentence signal summary]
+SUMMARY: [2-3 sentence executive summary of main challenges/opportunities]
 SOURCES: [key source URLs or publication names]
 
 Company: {company}
@@ -35,7 +36,7 @@ def parse_result(text: str) -> dict:
         m = re.search(
             rf"{code}:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n[A-Z]{{2,}}:|$)",
             text, re.DOTALL)
-        out[f"{code}_score"] = min(int(m.group(1)), 10) if m else 0
+        out[f"{code}_score"]  = min(int(m.group(1)), 10) if m else 0
         out[f"{code}_status"] = m.group(2).strip() if m else "UNCLEAR"
         out[f"{code}_signal"] = m.group(3).strip() if m else ""
     sm = re.search(r"SUMMARY:\s*(.+?)(?=SOURCES:|$)", text, re.DOTALL)
@@ -59,10 +60,9 @@ def get_active(parsed: dict) -> list:
 
 def scan_company(company: str, api_key: str, industry_hint: str = "") -> dict:
     genai.configure(api_key=api_key)
-    grounding = genai.protos.Tool(
-        google_search_retrieval=genai.protos.GoogleSearchRetrieval()
-    )
-    model = genai.GenerativeModel(MODEL, tools=[grounding])
+    # Use the correct google_search tool (not google_search_retrieval)
+    tool = protos.Tool(google_search=protos.GoogleSearch())
+    model = genai.GenerativeModel(MODEL, tools=[tool])
     prompt = PROMPT.format(company=company, industry_hint=industry_hint or "not specified")
     try:
         resp = model.generate_content(prompt)
