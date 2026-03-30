@@ -15,22 +15,37 @@ with st.sidebar:
                                value=st.secrets.get("GEMINI_API_KEY", ""))
     st.divider()
     st.markdown("**Required CSV columns:**")
-    st.code("name, known_function, closeness_level\n(optional: known_company, company_situation)")
+    st.code("name\nknown_function\ncloseness_level\n\nOptional:\nknown_company\ncompany_situation")
 
 uploaded = st.file_uploader("Upload contacts CSV", type="csv")
 
 if uploaded:
     df = pd.read_csv(uploaded)
+
+    # Normalise column names: strip spaces, lowercase, replace spaces with underscores
+    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace("-", "_")
+
     st.subheader(f"Preview — {len(df)} contacts loaded")
     st.dataframe(df, use_container_width=True)
+
+    # Check required columns exist
+    required = ["name", "known_function", "closeness_level"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        st.error(
+            f"❌ Your CSV is missing these columns: **{', '.join(missing)}**\n\n"
+            f"Columns detected in your file: `{', '.join(df.columns.tolist())}`\n\n"
+            "Please rename your columns to match exactly: `name`, `known_function`, `closeness_level`"
+        )
+        st.stop()
 
     if st.button("🚀 Run Pipeline", type="primary"):
         if not (serper_key and gemini_key):
             st.error("Please fill in both API keys in the sidebar.")
             st.stop()
 
-        progress_bar  = st.progress(0)
-        status_text   = st.empty()
+        progress_bar = st.progress(0)
+        status_text  = st.empty()
 
         def cb(done, total, msg):
             progress_bar.progress(int(done / total * 100) if total else 0)
