@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Optional, Callable
 from .stage0_serper import lookup_company
 from .stage1_gemini import scan_company
-from .stage2_openai import generate_message
+from .stage2_gemini import generate_message
 
 SERPER_PAUSE = 1.5
 LOW_CONF = 0.5
@@ -23,7 +23,6 @@ def run_pipeline(
     df: pd.DataFrame,
     serper_key: str,
     gemini_key: str,
-    openai_key: str,
     config_path: str = "config/ximpax_profile.txt",
     progress_cb: Optional[Callable] = None,
 ) -> tuple:
@@ -46,15 +45,15 @@ def run_pipeline(
                    company_summary="", active_situations="",
                    linkedin_message="", notes="")
 
-        # ── Stage 0 ───────────────────────────────────────────────────────────
+        # Stage 0 — Company lookup
         if progress_cb: progress_cb(idx, total, f"Stage 0 — company lookup: {name}")
         known_co = str(row.get("known_company", "")).strip()
         if known_co and known_co.lower() != "nan":
             company, conf, strategy = known_co, 1.0, "provided"
         else:
             lk = lookup_company(name, function, serper_key)
-            company = lk.get("company") or ""
-            conf    = lk.get("confidence", 0.0)
+            company  = lk.get("company") or ""
+            conf     = lk.get("confidence", 0.0)
             strategy = lk.get("strategy", "")
             time.sleep(SERPER_PAUSE)
 
@@ -68,7 +67,7 @@ def run_pipeline(
             if progress_cb: progress_cb(idx + 1, total, f"⚠️ Skipped {name}")
             continue
 
-        # ── Stage 1 ───────────────────────────────────────────────────────────
+        # Stage 1 — Gemini situation scan
         if progress_cb: progress_cb(idx, total, f"Stage 1 — scanning {company}...")
         active_situations = []
         try:
@@ -88,14 +87,14 @@ def run_pipeline(
         summary = (sit_override if sit_override and sit_override.lower() != "nan"
                    else rec["company_summary"])
 
-        # ── Stage 2 ───────────────────────────────────────────────────────────
+        # Stage 2 — Message generation (Gemini)
         if progress_cb: progress_cb(idx, total, f"Stage 2 — writing message for {name}...")
         try:
             rec["linkedin_message"] = generate_message(
                 name=name, company=company, function=function,
                 closeness_level=closeness, active_situations=active_situations,
                 company_summary=summary, ximpax_profile=profile,
-                openai_api_key=openai_key,
+                gemini_api_key=gemini_key,
             )
         except Exception as e:
             rec["notes"] += f"Stage2 error: {e}"
