@@ -11,28 +11,29 @@ CAPABILITIES = {
     "SCD": "Network resilience, nearshoring strategy, make-vs-buy analysis, logistics re-routing — SC design built for volatility.",
 }
 
+# Scale: 1 = closest (warm/direct), 3 = least known (formal/careful)
 CLOSENESS = {
-    1: ("Acquaintance",      "Professional and respectful. Brief context reminder. Formal but warm."),
-    2: ("Professional",      "Collegial and direct. Reference shared professional ground. Moderate warmth."),
-    3: ("Close Contact",     "Warm, direct, candid — skip formal pleasantries, they know you."),
+    1: ("Close Contact",      "Warm, direct, candid — skip formal pleasantries, they know you well."),
+    2: ("Professional",       "Collegial and direct. Reference shared professional ground. Moderate warmth."),
+    3: ("Acquaintance",       "Professional and respectful. Be thoughtful — they barely know you. No familiarity. Formal but human."),
 }
 
 SYSTEM_INSTRUCTION = """You are a senior business development writer for XIMPAX, a boutique supply chain and procurement consultancy in Switzerland.
 
 Rules for the LinkedIn message:
 - 80-120 words maximum
-- Do NOT start with "Hi [Name]," — lead with a relevant insight or observation
-- Reference specific company situation signals
-- Position XIMPAX naturally — never pushy
-- End with ONE soft CTA (e.g. "Would a brief call make sense?")
-- Match tone precisely to closeness level
-- Sound human and specific — never templated
-- Write ONLY the message body — no labels, no subject line"""
+- Do NOT start with "Hi [Name]," — lead with a relevant business insight or observation about their company
+- Reference specific company situation signals if available
+- Position XIMPAX naturally — never pushy, never salesy
+- End with ONE soft CTA (e.g. "Would a brief call make sense?" or "Happy to share what we're seeing if useful.")
+- Match tone precisely to the closeness level — a level 3 (acquaintance) must feel measured and credible, not overfamiliar
+- Sound human and specific — never templated or generic
+- Write ONLY the message body — no subject line, no labels, no "Message:" prefix"""
 
 
 def _situation_block(active: list) -> str:
     if not active:
-        return "No strong signals — use general SC/procurement angle."
+        return "No strong signals found — use a general SC/procurement observation relevant to their industry."
     lines = []
     for s in active:
         lines.append(
@@ -50,17 +51,18 @@ def generate_message(name, company, function, closeness_level,
         model_name=MODEL,
         system_instruction=SYSTEM_INSTRUCTION + f"\n\nXIMPAX PROFILE:\n{ximpax_profile}",
     )
-    cl_label, cl_tone = CLOSENESS.get(closeness_level, CLOSENESS[1])
+    cl_label, cl_tone = CLOSENESS.get(closeness_level, CLOSENESS[3])
     prompt = f"""Contact: {name} | {function} @ {company}
-Closeness: {closeness_level} — {cl_label} | Tone: {cl_tone}
+Closeness: {closeness_level} — {cl_label}
+Tone guidance: {cl_tone}
 
 Company situation (from research):
-{company_summary}
+{company_summary if company_summary else "No research data — use general industry angle."}
 
-Active signals:
+Active signals to reference:
 {_situation_block(active_situations)}
 
-Write only the message body."""
+Write only the message body. Be specific to this person and company."""
 
     try:
         resp = model.generate_content(prompt)
