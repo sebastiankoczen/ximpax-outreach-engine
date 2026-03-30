@@ -1,4 +1,4 @@
-import time
+import time, re
 from google import genai
 from google.genai import types
 
@@ -12,37 +12,107 @@ CAPABILITIES = {
     "SCD": "We help redesign supply chains for resilience — nearshoring, alternative sourcing, make-vs-buy.",
 }
 
-# 1 = closest contact, 3 = barely know them
-CLOSENESS = {
-    1: ("Close", "Write like you're texting a friend you respect. Skip all formalities. Get straight to it. Short sentences."),
-    2: ("Professional", "Collegial. Like catching up with a former colleague. Warm but not overfamiliar. Direct."),
-    3: ("Acquaintance", "You barely know this person. Be human and credible, not salesy. No buzzwords. No corporate speak. Don't over-explain XIMPAX. One simple idea, one question."),
+# What each role actually cares about most — ordered by relevance
+# Format: list of signal codes, highest priority first
+ROLE_AFFINITY = {
+    "procurement":   ["MP", "RC", "SG", "SCD"],
+    "sourcing":      ["MP", "SCD", "RC", "SG"],
+    "category":      ["MP", "RC", "SG", "SCD"],
+    "purchasing":    ["MP", "RC", "SCD", "SG"],
+    "buyer":         ["MP", "SCD", "RC", "SG"],
+    "planning":      ["SCD", "SG", "RC", "MP"],
+    "supply":        ["SCD", "RC", "SG", "MP"],
+    "logistics":     ["SCD", "MP", "RC", "SG"],
+    "operations":    ["RC", "SCD", "SG", "MP"],
+    "operational":   ["RC", "SCD", "SG", "MP"],
+    "manufacturing": ["RC", "SCD", "MP", "SG"],
+    "demand":        ["SCD", "SG", "MP", "RC"],
+    "inventory":     ["SCD", "MP", "RC", "SG"],
+    "s&op":          ["SG", "SCD", "RC", "MP"],
+    "ibp":           ["SG", "SCD", "RC", "MP"],
+    "network":       ["SCD", "SG", "RC", "MP"],
+    "transformation":["RC", "SG", "SCD", "MP"],
+    "excellence":    ["RC", "MP", "SCD", "SG"],
+    "director":      ["MP", "RC", "SG", "SCD"],
+    "vp":            ["MP", "SG", "RC", "SCD"],
+    "cpo":           ["MP", "RC", "SG", "SCD"],
+    "coo":           ["RC", "MP", "SCD", "SG"],
+    "head":          ["RC", "MP", "SG", "SCD"],
 }
 
-SYSTEM_INSTRUCTION = """You write short LinkedIn messages for Sebastian Koczen, founder of XIMPAX, a small Swiss consultancy that helps companies with supply chain and procurement.
+# Human label + what angle XIMPAX takes per signal
+SIGNAL_CONTEXT = {
+    "RC":  ("resource constraints or capability gaps",
+            "We place experienced SC/procurement people directly inside teams — no ramp-up."),
+    "MP":  ("margin pressure or cost reduction",
+            "We run category reviews, negotiations and spend programmes that deliver real savings fast."),
+    "SG":  ("growth or transformation",
+            "We help build the planning and procurement muscle to scale — S&OP, network, M&A integration."),
+    "SCD": ("supply chain disruption or sourcing risk",
+            "We help redesign for resilience — nearshoring, alternative sourcing, make-vs-buy."),
+}
 
-YOUR WRITING RULES — follow every single one:
-- MAX 80 words. Count them.
+CLOSENESS = {
+    1: ("Close", "Write like you're texting a friend you respect. Skip all formalities. Short sentences."),
+    2: ("Professional", "Collegial. Like catching up with a former colleague. Warm but not overfamiliar."),
+    3: ("Acquaintance", "You barely know this person. Be human and credible, not salesy. One idea, one question."),
+}
+
+SYSTEM_INSTRUCTION = """You write short LinkedIn messages for Sebastian Koczen, founder of XIMPAX, a small Swiss supply chain and procurement consultancy.
+
+RULES — every single one applies:
+- MAX 80 words. Hard limit.
 - Sound like a real person, not a consultant writing a brochure
-- NO buzzwords: no "resilience", "optimise", "leverage", "solutions", "differentiator", "value proposition", "stakeholders"
-- NO phrases like "I wanted to reach out", "I hope this finds you well", "observing the current landscape"
-- Start with something specific and real about THEIR company or role — not a generic industry observation
-- XIMPAX gets ONE mention, max. Don't describe what we do in detail — one short sentence is enough
-- End with a single low-pressure question like "Worth a quick chat?" or "Keen to hear your take."
-- Match tone exactly to closeness level — a level 3 must feel like a cold message from someone credible, not a sales pitch
-- Write ONLY the message. No labels, no subject line, nothing else.
+- NO buzzwords: no "resilience", "optimise", "leverage", "solutions", "differentiator", "value proposition", "stakeholders", "landscape"
+- NO openers like "I wanted to reach out", "I hope this finds you well", "observing the current..."
+- Start with something SPECIFIC to their company or a real challenge for their exact function
+- Lead with the PRIMARY SIGNAL for their role — this is the one they will personally feel, not just their company
+- XIMPAX gets ONE mention, max. One short sentence. No description of what we do beyond that.
+- End with a single low-pressure question: "Worth a quick chat?" / "Happy to share what we're seeing." / "Keen to hear your take."
+- Match tone exactly to closeness level
+- Write ONLY the message. Nothing else.
 
 XIMPAX context (use sparingly):
 {ximpax_profile}"""
 
 
-def _situation_block(active: list) -> str:
+def _infer_role_priorities(function: str) -> list:
+    """Return signal priority order based on function keywords."""
+    func_lower = function.lower()
+    for keyword, priority in ROLE_AFFINITY.items():
+        if keyword in func_lower:
+            return priority
+    return ["MP", "RC", "SCD", "SG"]  # default
+
+
+def _build_situation_block(active: list, role_priority: list) -> tuple:
+    """
+    Returns (primary_signal_text, full_block_text).
+    Primary signal = highest-priority signal that is CONFIRMED or LIKELY for this role.
+    """
     if not active:
-        return "No signals found — base the message on what is likely relevant for their role and industry."
-    lines = []
-    for s in active:
-        lines.append(f"• {s['label']} ({s['status']}): {s['signal']}\n  Use this angle: {CAPABILITIES.get(s['code'], '')}")
-    return "\n".join(lines)
+        return None, "No signals found — base message on what is most relevant for their exact role."
+
+    # Sort active signals by role priority
+    code_order = {code: i for i, code in enumerate(role_priority)}
+    sorted_active = sorted(active, key=lambda s: code_order.get(s["code"], 99))
+
+    primary = sorted_active[0]
+    ctx = SIGNAL_CONTEXT.get(primary["code"], ("challenges", ""))
+    primary_text = (
+        f"PRIMARY SIGNAL for this role: {primary['label']} ({primary['status']})\n"
+        f"Evidence: {primary['signal']}\n"
+        f"Frame as: {ctx[0]}\n"
+        f"XIMPAX angle if mentioned: {ctx[1]}"
+    )
+
+    all_lines = []
+    for s in sorted_active:
+        c = SIGNAL_CONTEXT.get(s["code"], ("", ""))
+        all_lines.append(f"• {s['label']} ({s['status']}, score {s['score']}): {s['signal']}")
+    full_block = primary_text + "\n\nALL ACTIVE SIGNALS:\n" + "\n".join(all_lines)
+
+    return primary, full_block
 
 
 def generate_message(name, company, function, closeness_level,
@@ -52,20 +122,25 @@ def generate_message(name, company, function, closeness_level,
     cl_label, cl_tone = CLOSENESS.get(closeness_level, CLOSENESS[3])
     system = SYSTEM_INSTRUCTION.format(ximpax_profile=ximpax_profile)
 
+    role_priority = _infer_role_priorities(function)
+    primary_signal, situation_block = _build_situation_block(active_situations, role_priority)
+
     prompt = f"""Write a LinkedIn message from Sebastian to:
 
 Name: {name}
 Title: {function}
 Company: {company}
-Closeness level: {closeness_level} ({cl_label}) — {cl_tone}
+Closeness: {closeness_level} ({cl_label}) — {cl_tone}
 
-What we know about {company}:
-{company_summary if company_summary else "No research available — use what you know about the company/industry."}
+Role signal priority for this function: {" > ".join(role_priority)}
+(Lead the message with the highest-priority signal that has evidence.)
 
-Signals to potentially reference:
-{_situation_block(active_situations)}
+Company research summary:
+{company_summary if company_summary else "No research — use what you know about this company/industry."}
 
-Remember: MAX 80 words. Real and human. No buzzwords. One mention of XIMPAX max."""
+{situation_block}
+
+Remember: MAX 80 words. Real language. No buzzwords. One XIMPAX mention max. Specific to {name}'s role as {function}."""
 
     try:
         resp = client.models.generate_content(
