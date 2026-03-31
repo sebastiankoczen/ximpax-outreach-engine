@@ -85,9 +85,9 @@ These are 3 optional closing sentences — one per active company signal — tha
 Rules:
 - Exactly 3 sentences, numbered 1/2/3
 - Each references a DIFFERENT active signal (RC, MP, SG or SCD)
-- Max 25 words each
+- 30-40 words each — enough to be specific and useful, not just a teaser
 - Plain, direct language — like one colleague talking to another
-- Each should feel like a natural add-on to a short message
+- Each should feel like a natural, specific add-on — reference the actual signal evidence, not just the category
 - NEVER mention AI, automation, consulting, consultancy, consultants
 - NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, landscape
 - Write ONLY the 3 numbered sentences. Nothing else."""
