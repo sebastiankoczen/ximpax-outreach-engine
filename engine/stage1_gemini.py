@@ -3,50 +3,53 @@ from google import genai
 from google.genai import types
 
 MODEL = "gemini-2.0-flash"
-PAUSE = 15
+PAUSE = 2
 
 LABELS = {"RC": "Resource Constraints", "MP": "Margin Pressure",
           "SG": "Significant Growth", "SCD": "Supply Chain Disruption"}
 
-PROMPT = """You are a strategic business analyst with access to Google Search.
-Search the web right now for the latest news, reports and announcements about the company "{company}".
+PROMPT = """You are a strategic business analyst with deep knowledge of global companies.
+Using everything you know about the company "{company}", assess their current business situation.
 
-Assess current signals for these 4 categories:
+Assess signals for these 4 categories based on what you know:
 - RC (Resource Constraints): staffing shortages, hiring freezes, restructuring, layoffs, capability gaps
 - MP (Margin Pressure): cost reduction programmes, profitability challenges, price pressure, margin warnings
 - SG (Significant Growth): M&A, market expansion, new product launches, IPO, scaling, new markets
 - SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges, supplier issues
 
-Scoring: STRONG evidence (named programme, number, announcement) = +2 | MEDIUM/implied = +1 | None = 0 (cap at 10)
+Scoring per category:
+- STRONG evidence (named programme, specific number, known announcement) = score 7-10
+- MEDIUM/implied evidence = score 4-6
+- No evidence = score 0-3
 
-For each category, write 4-5 specific sentences using:
+For each category write 4-5 specific sentences using:
 - Named programmes (e.g. "Tailor Made cost programme", "Project Phoenix")
-- Real numbers (e.g. "EUR 400M savings target", "2,000 job cuts")
-- Specific events (e.g. "Q3 2025 earnings call", "January 2026 press release")
-- Named executives or divisions where relevant
+- Real numbers where known (e.g. "EUR 400M savings target", "2,000 job cuts")
+- Specific events or announcements
+- Named divisions or business units where relevant
+- If you don't have specific information, say so honestly and score low
 
-Reply in this EXACT format (no markdown, no bold, no asterisks):
-RC: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
-MP: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
-SG: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
-SCD: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
+Reply in this EXACT format (no markdown, no bold, no asterisks, no bullet points in the signal text):
+RC: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
+MP: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
+SG: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
+SCD: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
 SUMMARY: [2-3 sentence executive summary of the most important challenges and opportunities]
-SOURCES: [key source names or URLs]
+SOURCES: [mention key known sources e.g. annual reports, press releases, news]
 
 Company: {company}
 Industry hint: {industry_hint}"""
 
 
 def parse_result(text: str) -> dict:
-    # Strip markdown bold/italic formatting
     text = re.sub(r'\*+', '', text)
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
         m = re.search(
-            rf"{code}:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n[A-Z]{{2,}}:|$)",
+            rf"{code}:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES):|$)",
             text, re.DOTALL)
         raw_score = min(int(m.group(1)), 10) if m else 0
-        # Enforce status strictly from score
         if raw_score >= 7:
             status = "CONFIRMED"
         elif raw_score >= 4:
@@ -83,8 +86,7 @@ def scan_company(company: str, api_key: str, industry_hint: str = "") -> dict:
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                temperature=0.2
+                temperature=0.3
             )
         )
         parsed = parse_result(resp.text)
