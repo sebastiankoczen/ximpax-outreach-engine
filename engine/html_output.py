@@ -7,42 +7,74 @@ SIGNAL_META = {
     "SCD": ("#cfe2ff", "#084298", "🔵", "Supply Chain Disruption"),
 }
 
+def _resolve_status(score, raw_status):
+    """
+    Re-derive status from score to avoid Gemini inconsistencies.
+    Score 7-10 = CONFIRMED, 4-6 = LIKELY, 0-3 = UNCLEAR.
+    If Gemini said CONFIRMED but score is low, downgrade it.
+    """
+    s = int(score or 0)
+    rs = str(raw_status).strip().upper()
+    if s >= 7:
+        return "CONFIRMED"
+    elif s >= 4:
+        # Allow CONFIRMED only if score actually supports it
+        return "LIKELY"
+    else:
+        return "UNCLEAR"
+
 def _score_badge(score):
     s = int(score or 0)
     if s >= 7:   bg, fg = "#f8d7da","#842029"
     elif s >= 4: bg, fg = "#fff3cd","#856404"
     else:        bg, fg = "#e9ecef","#6c757d"
-    return f'<span class="sig-score" style="background:{bg};color:{fg};">score {s}/10</span>'
+    return bg, fg, s
 
+def _sentence_bullets(text, max_sentences=4):
+    """Split signal text into individual sentence bullets."""
+    if not text or text.strip() in ("", "nan"):
+        return ""
+    # Split on sentence boundaries
+    raw = str(text).strip().lstrip("*").strip()
+    sentences = re.split(r'(?<=[.!?])\s+', raw)
+    sentences = [s.strip().lstrip("*").strip() for s in sentences if len(s.strip()) > 15]
+    sentences = sentences[:max_sentences]
+    if not sentences:
+        return f'<p class="sig-text">{hl.escape(raw[:300])}</p>'
+    items = "".join(f'<li>{hl.escape(s)}</li>' for s in sentences)
+    return f'<ul class="evidence-list">{items}</ul>'
 
 def _all_signal_bullets(row):
-    """Show every active (non-UNCLEAR) signal as a bullet."""
     items = []
     for code in ["MP", "RC", "SG", "SCD"]:
-        score  = int(row.get(f"{code}_score", 0) or 0)
-        status = str(row.get(f"{code}_status", "UNCLEAR"))
-        signal = str(row.get(f"{code}_signal", "")).strip()
+        score      = int(row.get(f"{code}_score", 0) or 0)
+        raw_status = str(row.get(f"{code}_status", "UNCLEAR"))
+        signal     = str(row.get(f"{code}_signal", "")).strip()
+        status     = _resolve_status(score, raw_status)
+
         if status == "UNCLEAR" or not signal or signal == "nan":
             continue
-        bg, fg, icon, label = SIGNAL_META[code]
-        badge = _score_badge(score)
-        txt   = hl.escape(signal[:200]) + ("…" if len(signal) > 200 else "")
+
+        bg, fg, s  = _score_badge(score)
+        _, _, icon, label = SIGNAL_META[code]
+        bullets = _sentence_bullets(signal)
+
         items.append(f"""
         <li class="sig-bullet" style="border-left:3px solid {fg};background:{bg}18;">
             <div class="sig-header">
                 <span class="sig-label" style="color:{fg};">{icon} {label}</span>
-                {badge}
+                <span class="sig-score" style="background:{bg};color:{fg};">score {s}/10</span>
                 <span class="sig-status" style="background:{fg};color:#fff;">{status}</span>
             </div>
-            <p class="sig-text">{txt}</p>
+            {bullets}
         </li>""")
+
     if not items:
         return ""
     return '<ul class="sig-list">' + "".join(items) + "</ul>"
 
 
-def _note_cards(raw, section_id, label, hint):
-    """Render numbered lines from Gemini as click-to-copy cards."""
+def _note_cards(raw, section_id, label, hint, card_color="blue"):
     if not raw or str(raw).strip() in ("", "nan"):
         return ""
     lines = [l.strip() for l in str(raw).splitlines() if l.strip()]
@@ -51,28 +83,30 @@ def _note_cards(raw, section_id, label, hint):
         text = re.sub(r"^[1-3][.)\s]+", "", line).strip()
         if not text:
             continue
-        text_esc = hl.escape(text)
         cards.append(
-            f'<div class="note-card" onclick="copyNote(this)" title="Click to copy">{text_esc}</div>'
+            f'<div class="note-card {card_color}" onclick="copyNote(this)" ' 
+            f'title="Click to copy">{hl.escape(text)}</div>'
         )
     if not cards:
         return ""
-    return (f'<div class="notes-section" id="{section_id}">' 
-            f'<div class="section-label">{label} <span class="hint">{hint}</span></div>' 
-            + "".join(cards) + '</div>')
+    return (
+        f'<div class="notes-section" id="{section_id}">' 
+        f'<div class="section-label">{label} <span class="hint">{hint}</span></div>' 
+        + "".join(cards) + '</div>'
+    )
 
 
 def generate_html(df) -> str:
     cards = []
     for _, row in df.iterrows():
-        name     = hl.escape(str(row.get("name", "")))
-        func     = hl.escape(str(row.get("known_function", "")))
-        company  = hl.escape(str(row.get("company", "")))
-        message  = hl.escape(str(row.get("linkedin_message", ""))).replace("\n", "<br>")
+        name      = hl.escape(str(row.get("name", "")))
+        func      = hl.escape(str(row.get("known_function", "")))
+        company   = hl.escape(str(row.get("company", "")))
+        message   = hl.escape(str(row.get("linkedin_message", ""))).replace("\n", "<br>")
         pos_notes = str(row.get("positioning_notes", ""))
         sit_notes = str(row.get("situation_notes", ""))
-        notes    = str(row.get("notes", ""))
-        skipped  = "no company" in notes.lower() or "skipped" in notes.lower()
+        notes     = str(row.get("notes", ""))
+        skipped   = "no company" in notes.lower() or "skipped" in notes.lower()
 
         signal_bullets = _all_signal_bullets(row) if not skipped else ""
 
@@ -85,11 +119,11 @@ def generate_html(df) -> str:
             </div>"""
 
         pos_section = _note_cards(
-            pos_notes, "pos", "✏️ XIMPAX Positioning Options", "(click to copy)"
+            pos_notes, "pos", "✏️ XIMPAX Positioning Options", "(click to copy)", "blue"
         ) if not skipped else ""
 
         sit_section = _note_cards(
-            sit_notes, "sit", "💡 Situation Note Options", "(click to append to message)"
+            sit_notes, "sit", "💡 Situation Note Options", "(click to append)", "green"
         ) if not skipped else ""
 
         if skipped:
@@ -151,21 +185,23 @@ def generate_html(df) -> str:
   .hint{{font-weight:400;font-size:10px;color:#aaa;text-transform:none;letter-spacing:0}}
   .summary-block,.notes-section,.message-section{{margin-bottom:16px}}
   /* Signal list */
-  .sig-list{{list-style:none;display:flex;flex-direction:column;gap:7px}}
-  .sig-bullet{{border-radius:8px;padding:9px 12px}}
-  .sig-header{{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px}}
+  .sig-list{{list-style:none;display:flex;flex-direction:column;gap:10px}}
+  .sig-bullet{{border-radius:8px;padding:10px 14px}}
+  .sig-header{{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}}
   .sig-label{{font-size:12px;font-weight:700;flex:1;min-width:130px}}
-  .sig-score{{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px}}
-  .sig-status{{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px}}
+  .sig-score{{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}}
+  .sig-status{{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}}
+  /* Evidence bullet list inside each signal */
+  .evidence-list{{list-style:disc;padding-left:16px;margin:0;display:flex;flex-direction:column;gap:3px}}
+  .evidence-list li{{font-size:12px;color:#444;line-height:1.55}}
   .sig-text{{font-size:12px;color:#444;line-height:1.55}}
-  /* Note cards — positioning + situation */
-  .note-card{{background:#f0f7ff;border:1.5px solid #b8d4f8;border-radius:8px;
-              padding:10px 14px;font-size:13px;color:#1a1a2e;cursor:pointer;
-              margin-bottom:6px;transition:background .15s;line-height:1.5}}
-  .note-card:hover{{background:#dbeafe}}
-  /* Situation note cards — slightly different colour */
-  #sit .note-card{{background:#f0fff4;border-color:#86efac}}
-  #sit .note-card:hover{{background:#dcfce7}}
+  /* Note cards */
+  .note-card{{border-radius:8px;padding:11px 14px;font-size:13px;color:#1a1a2e;
+              cursor:pointer;margin-bottom:6px;transition:background .15s;line-height:1.6}}
+  .note-card.blue{{background:#f0f7ff;border:1.5px solid #b8d4f8}}
+  .note-card.blue:hover{{background:#dbeafe}}
+  .note-card.green{{background:#f0fff4;border:1.5px solid #86efac}}
+  .note-card.green:hover{{background:#dcfce7}}
   /* Message */
   .message-box{{background:#f0f7ff;border:1.5px solid #b8d4f8;border-radius:8px;
                 padding:14px 16px;font-size:14px;line-height:1.7;cursor:pointer;
