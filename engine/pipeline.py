@@ -1,17 +1,12 @@
-import time, re
+import time
 import pandas as pd
 from typing import Optional, Callable
-from .stage0_serper import lookup_company, _extract_from_headline
 from .stage1_gemini import scan_company
 from .stage2_gemini import generate_message
 
-SERPER_PAUSE = 1.5
-LOW_CONF = 0.5
-
 OUTPUT_COLS = [
     "name", "known_function", "company", "linkedin_message",
-    "closeness_level", "company_confidence", "lookup_strategy", "review_flag",
-    "active_situations", "company_summary",
+    "closeness_level", "active_situations", "company_summary",
     "RC_score", "RC_status", "RC_signal",
     "MP_score", "MP_status", "MP_signal",
     "SG_score", "SG_status", "SG_signal",
@@ -25,14 +20,11 @@ def _load_profile(path="config/ximpax_profile.txt") -> str:
         with open(path, encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return ("XIMPAX is a small Swiss firm of senior supply chain and procurement experts "
-                "specialising in embedded expert deployment, category management, "
-                "and operational excellence for FMCG and Life Sciences clients.")
+        return "XIMPAX is a small Swiss team of senior supply chain and procurement experts."
 
 
 def run_pipeline(
     df: pd.DataFrame,
-    serper_key: str,
     gemini_key: str,
     config_path: str = "config/ximpax_profile.txt",
     progress_cb: Optional[Callable] = None,
@@ -46,43 +38,28 @@ def run_pipeline(
 
     for idx, row in df.iterrows():
         name         = str(row.get("name", "")).strip()
-        raw_function = str(row.get("known_function", "")).strip()
+        function     = str(row.get("known_function", "")).strip()
         closeness    = int(row.get("closeness_level", 3))
+        company      = str(row.get("known_company", "")).strip()
         sit_override = str(row.get("company_situation", "")).strip()
 
-        clean_func, _ = _extract_from_headline(raw_function)
+        if company.lower() in ("nan", ""):
+            company = ""
 
         rec = {col: "" for col in OUTPUT_COLS}
-        rec.update(name=name, known_function=clean_func, closeness_level=closeness,
-                   company_confidence=0.0, RC_score=0, MP_score=0, SG_score=0, SCD_score=0,
+        rec.update(name=name, known_function=function, closeness_level=closeness,
+                   company=company, RC_score=0, MP_score=0, SG_score=0, SCD_score=0,
                    RC_status="UNCLEAR", MP_status="UNCLEAR",
                    SG_status="UNCLEAR", SCD_status="UNCLEAR",
-                   review_flag="", notes="")
-
-        # Stage 0
-        if progress_cb: progress_cb(idx, total, f"Stage 0 — finding company: {name}")
-        known_co = str(row.get("known_company", "")).strip()
-        if known_co and known_co.lower() not in ("nan", ""):
-            company, conf, strategy = known_co, 1.0, "provided"
-        else:
-            lk = lookup_company(name, raw_function, serper_key)
-            company  = lk.get("company") or ""
-            conf     = lk.get("confidence", 0.0)
-            strategy = lk.get("strategy", "")
-            if strategy != "headline_parse":
-                time.sleep(SERPER_PAUSE)
-
-        rec.update(company=company, company_confidence=conf, lookup_strategy=strategy)
-        if conf < LOW_CONF:
-            rec["review_flag"] = "⚠️ Low confidence"
+                   notes="")
 
         if not company:
-            rec["notes"] = "Company not found — skipped Stage 1 & 2"
+            rec["notes"] = "No company provided — skipped. Add known_company column to your CSV."
             results.append(rec)
-            if progress_cb: progress_cb(idx + 1, total, f"⚠️ Skipped {name}")
+            if progress_cb: progress_cb(idx + 1, total, f"⚠️ Skipped {name} — no company")
             continue
 
-        # Stage 1
+        # Stage 1 — Gemini research
         if progress_cb: progress_cb(idx, total, f"Stage 1 — researching {company}...")
         active_situations = []
         try:
@@ -92,7 +69,7 @@ def run_pipeline(
                 rec[f"{code}_status"] = scan.get(f"{code}_status", "UNCLEAR")
                 rec[f"{code}_signal"] = scan.get(f"{code}_signal", "")
             rec["company_summary"]   = scan.get("SUMMARY", "")
-            active_situations = scan.get("active_situations", [])
+            active_situations        = scan.get("active_situations", [])
             rec["active_situations"] = "; ".join(
                 f"{s['code']}:{s['status']}" for s in active_situations)
             raw_stage1.append({"name": name, "company": company,
@@ -100,14 +77,13 @@ def run_pipeline(
         except Exception as e:
             rec["notes"] += f"Stage1 error: {e} | "
 
-        summary = (sit_override if sit_override and sit_override.lower() != "nan"
-                   else rec["company_summary"])
+        summary = sit_override if sit_override and sit_override.lower() != "nan"                   else rec["company_summary"]
 
-        # Stage 2
+        # Stage 2 — Message
         if progress_cb: progress_cb(idx, total, f"Stage 2 — writing message for {name}...")
         try:
             rec["linkedin_message"] = generate_message(
-                name=name, company=company, function=clean_func,
+                name=name, company=company, function=function,
                 closeness_level=closeness, active_situations=active_situations,
                 company_summary=summary, ximpax_profile=profile,
                 gemini_api_key=gemini_key,
@@ -119,10 +95,7 @@ def run_pipeline(
         if progress_cb: progress_cb(idx + 1, total, f"✅ Done: {name}")
 
     all_df = pd.DataFrame(results)
-    # Ensure column order
     ordered = [c for c in OUTPUT_COLS if c in all_df.columns]
-    all_df = all_df[ordered]
-
-    review_df = all_df[all_df["review_flag"] != ""].copy() if not all_df.empty else pd.DataFrame()
-    raw_df    = pd.DataFrame(raw_stage1) if raw_stage1 else pd.DataFrame()
-    return all_df, review_df, raw_df
+    all_df  = all_df[ordered]
+    raw_df  = pd.DataFrame(raw_stage1) if raw_stage1 else pd.DataFrame()
+    return all_df, raw_df
