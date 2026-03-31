@@ -2,10 +2,11 @@ import time
 import pandas as pd
 from typing import Optional, Callable
 from .stage1_gemini import scan_company
-from .stage2_gemini import generate_message, generate_notes
+from .stage2_gemini import generate_message, generate_positioning_notes, generate_situation_notes
 
 OUTPUT_COLS = [
-    "name", "known_function", "company", "linkedin_message", "positioning_notes",
+    "name", "known_function", "company", "linkedin_message",
+    "positioning_notes", "situation_notes",
     "closeness_level", "active_situations", "company_summary",
     "RC_score", "RC_status", "RC_signal",
     "MP_score", "MP_status", "MP_signal",
@@ -23,12 +24,7 @@ def _load_profile(path="config/ximpax_profile.txt") -> str:
         return "XIMPAX is a small Swiss team of senior supply chain and procurement experts."
 
 
-def run_pipeline(
-    df: pd.DataFrame,
-    gemini_key: str,
-    config_path: str = "config/ximpax_profile.txt",
-    progress_cb: Optional[Callable] = None,
-) -> tuple:
+def run_pipeline(df, gemini_key, config_path="config/ximpax_profile.txt", progress_cb=None):
     profile = _load_profile(config_path)
     df      = df.dropna(how="all")
     df      = df[df["name"].astype(str).str.strip().str.len() > 1].reset_index(drop=True)
@@ -50,7 +46,7 @@ def run_pipeline(
                    company=company, RC_score=0, MP_score=0, SG_score=0, SCD_score=0,
                    RC_status="UNCLEAR", MP_status="UNCLEAR",
                    SG_status="UNCLEAR", SCD_status="UNCLEAR",
-                   notes="", positioning_notes="")
+                   notes="", positioning_notes="", situation_notes="")
 
         if not company:
             rec["notes"] = "No company provided — skipped."
@@ -58,7 +54,7 @@ def run_pipeline(
             if progress_cb: progress_cb(idx + 1, total, f"⚠️ Skipped {name} — no company")
             continue
 
-        # Stage 1 — research
+        # Stage 1
         if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Researching {company}...")
         active_situations = []
         try:
@@ -91,13 +87,21 @@ def run_pipeline(
             rec["notes"] += f"Stage2 msg error: {e} | "
 
         # Stage 2b — positioning notes
-        if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Generating notes for {name}...")
+        if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Writing positioning notes...")
         try:
-            rec["positioning_notes"] = generate_notes(
-                company=company, function=function, gemini_api_key=gemini_key,
-            )
+            rec["positioning_notes"] = generate_positioning_notes(
+                company=company, function=function, gemini_api_key=gemini_key)
         except Exception as e:
-            rec["notes"] += f"Stage2 notes error: {e}"
+            rec["notes"] += f"Positioning error: {e} | "
+
+        # Stage 2c — situation notes
+        if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Writing situation notes...")
+        try:
+            rec["situation_notes"] = generate_situation_notes(
+                company=company, function=function,
+                active_situations=active_situations, gemini_api_key=gemini_key)
+        except Exception as e:
+            rec["notes"] += f"Situation notes error: {e}"
 
         results.append(rec)
         if progress_cb: progress_cb(idx + 1, total, f"✅ Done: {name}")
