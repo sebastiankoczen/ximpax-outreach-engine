@@ -64,19 +64,32 @@ TONE AND STYLE — follow all without exception:
 XIMPAX context (one sentence max in message):
 {ximpax_profile}"""
 
-NOTES_SYSTEM = """You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts.
+POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts.
 
-Generate exactly 3 short sentences (one per line, numbered 1/2/3) that Sebastian can use to describe XIMPAX in outreach. Each should be a different angle:
-1. Framing as an external taskforce — hands-on, embedded, not advisory
-2. Framing as industry experts — deep functional knowledge, real operator experience
-3. Framing around NOT being a consultancy — direct, honest, different from typical consulting firms
+Generate exactly 3 short sentences (numbered 1/2/3) that Sebastian can use to describe XIMPAX.
+Angle 1: External taskforce — hands-on, embedded, not advisory.
+Angle 2: Industry experts — deep functional knowledge, real operator experience.
+Angle 3: NOT a consultancy — direct contrast to typical consulting firms.
 
 Rules:
 - Max 20 words per sentence
 - Plain language — no jargon
-- Must NOT use: consultants, consulting, consultancy, solutions, leverage, stakeholders, resilience
-- Each sentence should feel distinct — not variations of the same thing
-- These are building blocks Sebastian picks from, not a paragraph
+- NEVER use: consultants, consulting, consultancy, solutions, leverage, stakeholders, resilience
+- Each sentence must feel distinct
+- Write ONLY the 3 numbered sentences. Nothing else."""
+
+SITUATION_NOTES_SYSTEM = """You write short, situation-specific add-on notes for LinkedIn InMail outreach from Sebastian Koczen at XIMPAX.
+
+These are 3 optional closing sentences — one per active company signal — that Sebastian can choose to append to his main message depending on which situation angle he wants to lead with.
+
+Rules:
+- Exactly 3 sentences, numbered 1/2/3
+- Each references a DIFFERENT active signal (RC, MP, SG or SCD)
+- Max 25 words each
+- Plain, direct language — like one colleague talking to another
+- Each should feel like a natural add-on to a short message
+- NEVER mention AI, automation, consulting, consultancy, consultants
+- NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, landscape
 - Write ONLY the 3 numbered sentences. Nothing else."""
 
 
@@ -142,14 +155,13 @@ MAX 80 words. Plain language. End with meeting request. No jargon. No AI mention
         time.sleep(PAUSE)
 
 
-def generate_notes(company, function, gemini_api_key) -> str:
-    """Generate 3 alternative XIMPAX positioning sentences for this context."""
+def generate_positioning_notes(company, function, gemini_api_key) -> str:
+    """3 alternative XIMPAX positioning sentences (taskforce / experts / not-consultancy)."""
     client = genai.Client(api_key=gemini_api_key)
     prompt = f"""Generate 3 short positioning sentences for XIMPAX for someone in this role:
 Function: {function}
 Company: {company}
 
-Each sentence = one way Sebastian can describe XIMPAX.
 Angle 1: External taskforce — hands-on, embedded, not advisory.
 Angle 2: Industry experts — deep functional knowledge, real operator background.
 Angle 3: NOT a consultancy — direct and honest contrast to typical consulting firms."""
@@ -158,9 +170,43 @@ Angle 3: NOT a consultancy — direct and honest contrast to typical consulting 
         resp = client.models.generate_content(
             model=MODEL, contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=NOTES_SYSTEM, temperature=0.9))
+                system_instruction=POSITIONING_SYSTEM, temperature=0.9))
         return resp.text.strip()
     except Exception as e:
-        return f"[Notes error: {e}]"
+        return f"[Error: {e}]"
+    finally:
+        time.sleep(PAUSE)
+
+
+def generate_situation_notes(company, function, active_situations, gemini_api_key) -> str:
+    """3 situation-specific add-on sentences — one per active signal — to append to the message."""
+    if not active_situations:
+        return ""
+    client = genai.Client(api_key=gemini_api_key)
+
+    signal_lines = "\n".join(
+        f"- {s['label']} ({s['status']}): {s['signal']}"
+        for s in active_situations[:3]
+    )
+
+    prompt = f"""Write 3 short add-on sentences for a LinkedIn InMail from Sebastian at XIMPAX.
+
+Contact: {function} at {company}
+
+Active company signals:
+{signal_lines}
+
+Each sentence references a DIFFERENT signal above.
+Each is a natural, conversational closing line Sebastian can choose to append to his main message.
+Max 25 words each. Plain language. Direct. No jargon."""
+
+    try:
+        resp = client.models.generate_content(
+            model=MODEL, contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SITUATION_NOTES_SYSTEM, temperature=0.9))
+        return resp.text.strip()
+    except Exception as e:
+        return f"[Error: {e}]"
     finally:
         time.sleep(PAUSE)
