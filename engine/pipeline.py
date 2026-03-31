@@ -2,10 +2,10 @@ import time
 import pandas as pd
 from typing import Optional, Callable
 from .stage1_gemini import scan_company
-from .stage2_gemini import generate_message
+from .stage2_gemini import generate_message, generate_notes
 
 OUTPUT_COLS = [
-    "name", "known_function", "company", "linkedin_message",
+    "name", "known_function", "company", "linkedin_message", "positioning_notes",
     "closeness_level", "active_situations", "company_summary",
     "RC_score", "RC_status", "RC_signal",
     "MP_score", "MP_status", "MP_signal",
@@ -30,19 +30,18 @@ def run_pipeline(
     progress_cb: Optional[Callable] = None,
 ) -> tuple:
     profile = _load_profile(config_path)
-    df = df.dropna(how="all")
-    df = df[df["name"].astype(str).str.strip().str.len() > 1].reset_index(drop=True)
+    df      = df.dropna(how="all")
+    df      = df[df["name"].astype(str).str.strip().str.len() > 1].reset_index(drop=True)
 
     results, raw_stage1 = [], []
     total = len(df)
 
     for idx, row in df.iterrows():
-        name         = str(row.get("name", "")).strip()
-        function     = str(row.get("known_function", "")).strip()
-        closeness    = int(row.get("closeness_level", 3))
-        company      = str(row.get("known_company", "")).strip()
+        name      = str(row.get("name", "")).strip()
+        function  = str(row.get("known_function", "")).strip()
+        closeness = int(row.get("closeness_level", 3))
+        company   = str(row.get("known_company", "")).strip()
         sit_override = str(row.get("company_situation", "")).strip()
-
         if company.lower() in ("nan", ""):
             company = ""
 
@@ -51,16 +50,16 @@ def run_pipeline(
                    company=company, RC_score=0, MP_score=0, SG_score=0, SCD_score=0,
                    RC_status="UNCLEAR", MP_status="UNCLEAR",
                    SG_status="UNCLEAR", SCD_status="UNCLEAR",
-                   notes="")
+                   notes="", positioning_notes="")
 
         if not company:
-            rec["notes"] = "No company provided — skipped. Add known_company column to your CSV."
+            rec["notes"] = "No company provided — skipped."
             results.append(rec)
             if progress_cb: progress_cb(idx + 1, total, f"⚠️ Skipped {name} — no company")
             continue
 
-        # Stage 1 — Gemini research
-        if progress_cb: progress_cb(idx, total, f"Stage 1 — researching {company}...")
+        # Stage 1 — research
+        if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Researching {company}...")
         active_situations = []
         try:
             scan = scan_company(company, gemini_key)
@@ -79,8 +78,8 @@ def run_pipeline(
 
         summary = sit_override if sit_override and sit_override.lower() != "nan"                   else rec["company_summary"]
 
-        # Stage 2 — Message
-        if progress_cb: progress_cb(idx, total, f"Stage 2 — writing message for {name}...")
+        # Stage 2a — message
+        if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Writing message for {name}...")
         try:
             rec["linkedin_message"] = generate_message(
                 name=name, company=company, function=function,
@@ -89,12 +88,21 @@ def run_pipeline(
                 gemini_api_key=gemini_key,
             )
         except Exception as e:
-            rec["notes"] += f"Stage2 error: {e}"
+            rec["notes"] += f"Stage2 msg error: {e} | "
+
+        # Stage 2b — positioning notes
+        if progress_cb: progress_cb(idx, total, f"[{idx+1}/{total}] Generating notes for {name}...")
+        try:
+            rec["positioning_notes"] = generate_notes(
+                company=company, function=function, gemini_api_key=gemini_key,
+            )
+        except Exception as e:
+            rec["notes"] += f"Stage2 notes error: {e}"
 
         results.append(rec)
         if progress_cb: progress_cb(idx + 1, total, f"✅ Done: {name}")
 
-    all_df = pd.DataFrame(results)
+    all_df  = pd.DataFrame(results)
     ordered = [c for c in OUTPUT_COLS if c in all_df.columns]
     all_df  = all_df[ordered]
     raw_df  = pd.DataFrame(raw_stage1) if raw_stage1 else pd.DataFrame()
