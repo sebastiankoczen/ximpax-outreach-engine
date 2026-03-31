@@ -6,30 +6,30 @@ MODEL = "gemini-2.0-flash"
 PAUSE = 0.5
 
 ROLE_AFFINITY = {
-    "procurement":   ["MP", "RC", "SG", "SCD"],
-    "sourcing":      ["MP", "SCD", "RC", "SG"],
-    "category":      ["MP", "RC", "SG", "SCD"],
-    "purchasing":    ["MP", "RC", "SCD", "SG"],
-    "buyer":         ["MP", "SCD", "RC", "SG"],
-    "planning":      ["SCD", "SG", "RC", "MP"],
-    "supply":        ["SCD", "RC", "SG", "MP"],
-    "logistics":     ["SCD", "MP", "RC", "SG"],
-    "operations":    ["RC", "SCD", "SG", "MP"],
-    "manufacturing": ["RC", "SCD", "MP", "SG"],
-    "demand":        ["SCD", "SG", "MP", "RC"],
-    "inventory":     ["SCD", "MP", "RC", "SG"],
-    "s&op":          ["SG", "SCD", "RC", "MP"],
-    "network":       ["SCD", "SG", "RC", "MP"],
-    "transformation":["RC", "SG", "SCD", "MP"],
-    "excellence":    ["RC", "MP", "SCD", "SG"],
-    "director":      ["MP", "RC", "SG", "SCD"],
-    "vp":            ["MP", "SG", "RC", "SCD"],
-    "cpo":           ["MP", "RC", "SG", "SCD"],
-    "coo":           ["RC", "MP", "SCD", "SG"],
-    "head":          ["RC", "MP", "SG", "SCD"],
-    "material":      ["SCD", "MP", "RC", "SG"],
-    "metal":         ["MP", "SCD", "RC", "SG"],
-    "indirect":      ["MP", "RC", "SG", "SCD"],
+    "procurement":    ["MP", "RC", "SG", "SCD"],
+    "sourcing":       ["MP", "SCD", "RC", "SG"],
+    "category":       ["MP", "RC", "SG", "SCD"],
+    "purchasing":     ["MP", "RC", "SCD", "SG"],
+    "buyer":          ["MP", "SCD", "RC", "SG"],
+    "planning":       ["SCD", "SG", "RC", "MP"],
+    "supply":         ["SCD", "RC", "SG", "MP"],
+    "logistics":      ["SCD", "MP", "RC", "SG"],
+    "operations":     ["RC", "SCD", "SG", "MP"],
+    "manufacturing":  ["RC", "SCD", "MP", "SG"],
+    "demand":         ["SCD", "SG", "MP", "RC"],
+    "inventory":      ["SCD", "MP", "RC", "SG"],
+    "s&op":           ["SG", "SCD", "RC", "MP"],
+    "network":        ["SCD", "SG", "RC", "MP"],
+    "transformation": ["RC", "SG", "SCD", "MP"],
+    "excellence":     ["RC", "MP", "SCD", "SG"],
+    "director":       ["MP", "RC", "SG", "SCD"],
+    "vp":             ["MP", "SG", "RC", "SCD"],
+    "cpo":            ["MP", "RC", "SG", "SCD"],
+    "coo":            ["RC", "MP", "SCD", "SG"],
+    "head":           ["RC", "MP", "SG", "SCD"],
+    "material":       ["SCD", "MP", "RC", "SG"],
+    "metal":          ["MP", "SCD", "RC", "SG"],
+    "indirect":       ["MP", "RC", "SG", "SCD"],
 }
 
 SIGNAL_ANGLES = {
@@ -40,16 +40,16 @@ SIGNAL_ANGLES = {
 }
 
 CLOSENESS = {
-    1: "Very close — write like a text to a good colleague. Casual, warm, straight to the point.",
-    2: "Know each other professionally — friendly and direct, like a former colleague.",
-    3: "Barely know each other — professional, respectful, no over-familiarity.",
+    1: "Very close - write like a text to a good colleague. Casual, warm, straight to the point.",
+    2: "Know each other professionally - friendly and direct, like a former colleague.",
+    3: "Barely know each other - professional, respectful, no over-familiarity.",
 }
 
-MSG_SYSTEM = """You write short LinkedIn InMail messages for Sebastian Koczen, who runs XIMPAX — a small Swiss team of senior supply chain and procurement experts.
+MSG_SYSTEM = """You write short LinkedIn InMail messages for Sebastian Koczen, who runs XIMPAX - a small Swiss team of senior supply chain and procurement experts.
 
-TONE AND STYLE — follow all without exception:
+TONE AND STYLE - follow all without exception:
 - Plain everyday language. No jargon, no complex words.
-- Sound like a real person writing to a colleague — not a sales pitch.
+- Sound like a real person writing to a colleague - not a sales pitch.
 - Go straight to the point. Reference something specific about the company situation.
 - MAX 80 words. Count them.
 - End with a simple, direct ask for a short meeting: e.g. "Would you be open to a quick call?" or "Could we find 20 minutes?"
@@ -57,41 +57,41 @@ TONE AND STYLE — follow all without exception:
 - NEVER mention AI, automation, or that this was generated.
 - NEVER call XIMPAX a consultancy or the team consultants.
 - NEVER use: resilience, optimise, leverage, synergies, value proposition, stakeholders, holistic, landscape, solutions.
-- One mention of XIMPAX max — just the name, no long description.
-- LinkedIn InMail format — no subject line, no "Dear X", no sign-off.
+- One mention of XIMPAX max - just the name, no long description.
+- LinkedIn InMail format - no subject line, no "Dear X", no sign-off.
 - Write ONLY the message. Nothing else.
 
-XIMPAX context (one sentence max in message):
-{ximpax_profile}"""
+XIMPAX context (one sentence max in message): {ximpax_profile}"""
 
-POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts.
+POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX - a small Swiss team of senior supply chain and procurement experts.
 
 Generate exactly 3 short sentences (numbered 1/2/3) that Sebastian can use to describe XIMPAX.
-Angle 1: External taskforce — hands-on, embedded, not advisory.
-Angle 2: Industry experts — deep functional knowledge, real operator experience.
-Angle 3: NOT a consultancy — direct contrast to typical consulting firms.
+Angle 1: External taskforce - hands-on, embedded, not advisory.
+Angle 2: Industry experts - deep functional knowledge, real operator experience.
+Angle 3: NOT a consultancy - direct contrast to typical consulting firms.
 
 Rules:
 - Max 20 words per sentence
-- Plain language — no jargon
+- Plain language - no jargon
 - NEVER use: consultants, consulting, consultancy, solutions, leverage, stakeholders, resilience
 - Each sentence must feel distinct
 - Write ONLY the 3 numbered sentences. Nothing else."""
 
-SITUATION_NOTES_SYSTEM = """You write short, situation-specific add-on notes for LinkedIn InMail outreach from Sebastian Koczen at XIMPAX.
+SITUATION_NOTES_SYSTEM = """You write situation-specific add-on notes for LinkedIn InMail outreach from Sebastian Koczen at XIMPAX.
 
-These are 3 optional closing sentences — one per active company signal — that Sebastian can choose to append to his main message depending on which situation angle he wants to lead with.
+These are 3 optional paragraphs - one per active company signal - that Sebastian can choose to append to his main message.
 
 Rules:
-- Exactly 3 sentences, numbered 1/2/3
+- Exactly 3 paragraphs, numbered 1/2/3
 - Each references a DIFFERENT active signal (RC, MP, SG or SCD)
-- 80-100 words each. Enough to be specific, personal and useful — not just a teaser.
-- Plain, direct language — like one colleague talking to another
-- Each must reference real, specific evidence (named programmes, numbers, events) from the signal — not just the category label.
-- Write it as a natural, warm extension of the main message — like a colleague sharing a relevant observation.
+- Each paragraph is 80-100 words. Long enough to be specific, personal and useful.
+- Plain, direct language - like one senior colleague talking to another
+- Each must reference real, specific evidence from the signal: named programmes, numbers, events, divisions
+- Write it as a natural, warm observation a knowledgeable colleague would share - not a sales pitch
+- Show that XIMPAX understands the situation deeply - reference the specific challenge and how similar situations have played out
 - NEVER mention AI, automation, consulting, consultancy, consultants
 - NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, landscape
-- Write ONLY the 3 numbered sentences. Nothing else."""
+- Write ONLY the 3 numbered paragraphs. Nothing else."""
 
 
 def _role_priority(function: str) -> list:
@@ -105,7 +105,7 @@ def _role_priority(function: str) -> list:
 def _signals_block(active: list, role_priority: list) -> str:
     if not active:
         return "No specific signals found. Base message on a realistic challenge for their role and industry."
-    order  = {c: i for i, c in enumerate(role_priority)}
+    order = {c: i for i, c in enumerate(role_priority)}
     ranked = sorted(active, key=lambda s: order.get(s["code"], 99))
     primary = ranked[0]
     lines = [
@@ -117,38 +117,35 @@ def _signals_block(active: list, role_priority: list) -> str:
         "Other signals (use only if space allows):",
     ]
     for s in ranked[1:]:
-        lines.append(f"  • {s['label']} ({s['status']}): {s['signal']}")
+        lines.append(f"  - {s['label']} ({s['status']}): {s['signal']}")
     return "\n".join(lines)
 
 
-def generate_message(name, company, function, closeness_level,
-                     active_situations, company_summary,
-                     ximpax_profile, gemini_api_key) -> str:
-    client   = genai.Client(api_key=gemini_api_key)
-    system   = MSG_SYSTEM.format(ximpax_profile=ximpax_profile)
-    tone     = CLOSENESS.get(closeness_level, CLOSENESS[3])
+def generate_message(name, company, function, closeness_level, active_situations, company_summary, ximpax_profile, gemini_api_key) -> str:
+    client = genai.Client(api_key=gemini_api_key)
+    system = MSG_SYSTEM.format(ximpax_profile=ximpax_profile)
+    tone = CLOSENESS.get(closeness_level, CLOSENESS[3])
     priority = _role_priority(function)
-    signals  = _signals_block(active_situations, priority)
-
+    signals = _signals_block(active_situations, priority)
     prompt = f"""Write a LinkedIn InMail from Sebastian to:
-
 Name: {name}
 Title: {function}
 Company: {company}
 Tone: {tone}
 
 What we know about {company}:
-{company_summary or "No specific research — use what you know about this company and industry."}
+{company_summary or "No specific research - use what you know about this company and industry."}
 
 {signals}
 
 MAX 80 words. Plain language. End with meeting request. No jargon. No AI mention."""
-
     try:
         resp = client.models.generate_content(
-            model=MODEL, contents=prompt,
+            model=MODEL,
+            contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=system, temperature=0.75))
+                system_instruction=system,
+                temperature=0.75))
         return resp.text.strip()
     except Exception as e:
         return f"[Error: {e}]"
@@ -157,21 +154,21 @@ MAX 80 words. Plain language. End with meeting request. No jargon. No AI mention
 
 
 def generate_positioning_notes(company, function, gemini_api_key) -> str:
-    """3 alternative XIMPAX positioning sentences (taskforce / experts / not-consultancy)."""
+    """3 alternative XIMPAX positioning sentences."""
     client = genai.Client(api_key=gemini_api_key)
     prompt = f"""Generate 3 short positioning sentences for XIMPAX for someone in this role:
 Function: {function}
 Company: {company}
-
-Angle 1: External taskforce — hands-on, embedded, not advisory.
-Angle 2: Industry experts — deep functional knowledge, real operator background.
-Angle 3: NOT a consultancy — direct and honest contrast to typical consulting firms."""
-
+Angle 1: External taskforce - hands-on, embedded, not advisory.
+Angle 2: Industry experts - deep functional knowledge, real operator background.
+Angle 3: NOT a consultancy - direct and honest contrast to typical consulting firms."""
     try:
         resp = client.models.generate_content(
-            model=MODEL, contents=prompt,
+            model=MODEL,
+            contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=POSITIONING_SYSTEM, temperature=0.9))
+                system_instruction=POSITIONING_SYSTEM,
+                temperature=0.9))
         return resp.text.strip()
     except Exception as e:
         return f"[Error: {e}]"
@@ -180,32 +177,33 @@ Angle 3: NOT a consultancy — direct and honest contrast to typical consulting 
 
 
 def generate_situation_notes(company, function, active_situations, gemini_api_key) -> str:
-    """3 situation-specific add-on sentences — one per active signal — to append to the message."""
+    """3 situation-specific add-on paragraphs - one per active signal."""
     if not active_situations:
         return ""
     client = genai.Client(api_key=gemini_api_key)
-
     signal_lines = "\n".join(
         f"- {s['label']} ({s['status']}): {s['signal']}"
         for s in active_situations[:3]
     )
-
-    prompt = f"""Write 3 short add-on sentences for a LinkedIn InMail from Sebastian at XIMPAX.
+    prompt = f"""Write 3 situation-specific add-on paragraphs for a LinkedIn InMail from Sebastian at XIMPAX.
 
 Contact: {function} at {company}
 
-Active company signals:
+Active company signals (use the specific facts below - named programmes, numbers, events):
 {signal_lines}
 
-Each sentence references a DIFFERENT signal above.
-Each is a natural, conversational closing line Sebastian can choose to append to his main message.
-Max 25 words each. Plain language. Direct. No jargon."""
-
+Each paragraph references a DIFFERENT signal above.
+Each is 80-100 words - specific, warm, like a knowledgeable colleague sharing a relevant observation.
+Reference the actual evidence: name the programmes, the numbers, the events.
+Show understanding of what this means for someone in the contact's role.
+Plain language. No jargon. No consulting speak."""
     try:
         resp = client.models.generate_content(
-            model=MODEL, contents=prompt,
+            model=MODEL,
+            contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=SITUATION_NOTES_SYSTEM, temperature=0.9))
+                system_instruction=SITUATION_NOTES_SYSTEM,
+                temperature=0.9))
         return resp.text.strip()
     except Exception as e:
         return f"[Error: {e}]"
