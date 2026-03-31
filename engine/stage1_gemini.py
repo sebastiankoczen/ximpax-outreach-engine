@@ -1,5 +1,6 @@
 import re, time
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 MODEL = "gemini-2.0-flash"
 PAUSE = 15
@@ -7,36 +8,53 @@ PAUSE = 15
 LABELS = {"RC": "Resource Constraints", "MP": "Margin Pressure",
           "SG": "Significant Growth", "SCD": "Supply Chain Disruption"}
 
-PROMPT = """You are a strategic business analyst. Use Google Search to research the company "{company}" right now.
+PROMPT = """You are a strategic business analyst with access to Google Search.
+Search the web right now for the latest news, reports and announcements about the company "{company}".
 
 Assess current signals for these 4 categories:
-- RC (Resource Constraints): staffing shortages, hiring freezes, restructuring, capability gaps
-- MP (Margin Pressure): cost reduction, profitability challenges, price pressure
-- SG (Significant Growth): M&A, market expansion, new launches, scaling
-- SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges
+- RC (Resource Constraints): staffing shortages, hiring freezes, restructuring, layoffs, capability gaps
+- MP (Margin Pressure): cost reduction programmes, profitability challenges, price pressure, margin warnings
+- SG (Significant Growth): M&A, market expansion, new product launches, IPO, scaling, new markets
+- SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges, supplier issues
 
-Score: STRONG evidence = +2 | MEDIUM/implied = +1 | None = 0 (cap each at 10)
+Scoring: STRONG evidence (named programme, number, announcement) = +2 | MEDIUM/implied = +1 | None = 0 (cap at 10)
 
-Reply in this EXACT format:
-RC: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-MP: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-SG: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-SCD: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [1–2 sentence signal summary]
-SUMMARY: [2–3 sentence executive summary of main challenges/opportunities]
-SOURCES: [key source URLs or publication names]
+For each category, write 4-5 specific sentences using:
+- Named programmes (e.g. "Tailor Made cost programme", "Project Phoenix")
+- Real numbers (e.g. "EUR 400M savings target", "2,000 job cuts")
+- Specific events (e.g. "Q3 2025 earnings call", "January 2026 press release")
+- Named executives or divisions where relevant
+
+Reply in this EXACT format (no markdown, no bold, no asterisks):
+RC: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
+MP: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
+SG: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
+SCD: [score] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary with specific facts]
+SUMMARY: [2-3 sentence executive summary of the most important challenges and opportunities]
+SOURCES: [key source names or URLs]
 
 Company: {company}
 Industry hint: {industry_hint}"""
 
 
 def parse_result(text: str) -> dict:
+    # Strip markdown bold/italic formatting
+    text = re.sub(r'\*+', '', text)
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
         m = re.search(
             rf"{code}:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n[A-Z]{{2,}}:|$)",
             text, re.DOTALL)
-        out[f"{code}_score"] = min(int(m.group(1)), 10) if m else 0
-        out[f"{code}_status"] = m.group(2).strip() if m else "UNCLEAR"
+        raw_score = min(int(m.group(1)), 10) if m else 0
+        # Enforce status strictly from score
+        if raw_score >= 7:
+            status = "CONFIRMED"
+        elif raw_score >= 4:
+            status = "LIKELY"
+        else:
+            status = "UNCLEAR"
+        out[f"{code}_score"] = raw_score
+        out[f"{code}_status"] = status
         out[f"{code}_signal"] = m.group(3).strip() if m else ""
     sm = re.search(r"SUMMARY:\s*(.+?)(?=SOURCES:|$)", text, re.DOTALL)
     out["SUMMARY"] = sm.group(1).strip() if sm else ""
@@ -58,14 +76,17 @@ def get_active(parsed: dict) -> list:
 
 
 def scan_company(company: str, api_key: str, industry_hint: str = "") -> dict:
-    genai.configure(api_key=api_key)
-    grounding = genai.protos.Tool(
-        google_search_retrieval=genai.protos.GoogleSearchRetrieval()
-    )
-    model = genai.GenerativeModel(MODEL, tools=[grounding])
+    client = genai.Client(api_key=api_key)
     prompt = PROMPT.format(company=company, industry_hint=industry_hint or "not specified")
     try:
-        resp = model.generate_content(prompt)
+        resp = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.2
+            )
+        )
         parsed = parse_result(resp.text)
     except Exception as e:
         parsed = parse_result("")
