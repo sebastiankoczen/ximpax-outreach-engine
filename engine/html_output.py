@@ -2,7 +2,9 @@ import re
 import html as hl
 
 def _split_numbered(text):
-    """Split '1. text\n2. text\n3. text' into list of (num, text) tuples."""
+    """Split '1. text
+2. text
+3. text' into list of (num, text) tuples."""
     if not text or str(text).strip() in ("", "nan"):
         return []
     clean = re.sub(r"[*`]+", "", str(text)).strip()
@@ -19,7 +21,8 @@ def _split_numbered(text):
             i += 2
     if not results:
         # Fallback: split on double newlines or single newlines between chunks
-        chunks = [c.strip() for c in re.split(r"\n{2,}", clean) if c.strip()]
+        chunks = [c.strip() for c in re.split(r"
+{2,}", clean) if c.strip()]
         results = [(str(i + 1), c) for i, c in enumerate(chunks[:3])]
     return results[:3]
 
@@ -72,7 +75,9 @@ def generate_html(df) -> str:
         
         # Signals
         for code in ["RC", "SCD", "MP", "SG"]:
-            val = str(row.get(code, ''))
+            val = str(row.get(code + '_score', ''))
+            if val != '':
+                val = f"{code}: {val}/10"
             tr += f"<td><div style='font-size:11px'>{hl.escape(val)}</div></td>"
         tr += "</tr>"
         table_rows.append(tr)
@@ -84,16 +89,27 @@ def generate_html(df) -> str:
         
         signals = []
         for code in ["RC", "MP", "SG", "SCD"]:
-            sig_text = str(row.get(code, ''))
+            sig_text = str(row.get(f'{code}_signal', ''))
             if sig_text:
                 signals.append(f"<div style='margin-bottom:8px'><span class='signal-tag sig-{code}'>{code}</span> <span style='font-size:12px'>{hl.escape(sig_text)}</span></div>")
         
         card += "".join(signals)
         
+        # Outreach Options
+        card += "<div style='margin-top:20px;padding-top:10px;border-top:2px solid #eee;font-weight:700;color:#0a66c2'>OUTREACH PROPOSALS</div>"
         options = _split_numbered(row.get('situation_notes', ''))
         for num, body in options:
             card += f"<div style='margin-top:15px;font-weight:600;font-size:12px;color:#666'>Option {num}</div>"
             card += f"<div class='proposal'>{hl.escape(body)}</div>"
+            
+        # Positioning Options
+        pos_notes = row.get('positioning_notes', '')
+        if pos_notes and str(pos_notes).strip() not in ("", "nan"):
+            card += "<div style='margin-top:25px;padding-top:10px;border-top:2px solid #eee;font-weight:700;color:#0a66c2'>XIMPAX POSITIONING</div>"
+            p_options = _split_numbered(pos_notes)
+            for num, body in p_options:
+                card += f"<div style='margin-top:15px;font-weight:600;font-size:12px;color:#666'>Angle {num}</div>"
+                card += f"<div class='proposal' style='background:#f0f7ff;border-left-color:#0a66c2'>{hl.escape(body)}</div>"
         
         card += "</div>"
         rows_html.append(card)
