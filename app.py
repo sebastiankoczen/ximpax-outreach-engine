@@ -10,30 +10,21 @@ st.title("⚡ XIMPAX Outreach Engine")
 st.caption("Research a company and generate tailored outreach proposals for a specific contact.")
 
 CLOSENESS_OPTIONS = [
-    "🧊 Cold — never met or exchanged messages",
+    "❄️ Cold — never met or exchanged messages",
     "🤝 Know professionally — met once or twice",
-    "👋 Regular contact — speak fairly often",
+    "📞 Regular contact — speak fairly often",
 ]
 
 with st.sidebar:
-    st.header("🔑 Settings")
-    gemini_key = st.text_input("Gemini API Key", type="password", 
-                             value=st.secrets.get("GEMINI_API_KEY", ""))
+    st.header("🔍 Settings")
+    gemini_key = st.text_input("Gemini API Key", type="password", value=st.secrets.get("GEMINI_API_KEY", ""))
     st.divider()
     st.markdown("""
-**Closeness level — affects message tone:**
-🧊 **Cold** — formal, open with a specific public fact
-🤝 **Professional** — warmer, reference shared context
-👋 **Regular** — direct, skip intro, get to the point
-""")
-    st.divider()
-    st.markdown("""
-**Signals:**
-🔴 RC — Resource Constraints
-🟠 MP — Margin Pressure
-🟢 SG — Significant Growth
-🔵 SCD — Supply Chain Disruption
-""")
+**Closeness level** — affects message tone:
+- **Cold**: Evidence-heavy, formal.
+- **Professional**: Warm, collegial.
+- **Regular**: Direct, brief, personal.
+    """)
 
 tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"])
 
@@ -41,31 +32,34 @@ with tab_single:
     st.subheader("Target Contact")
     col1, col2 = st.columns(2)
     with col1:
-        target_name = st.text_input("Full Name", placeholder="e.g. John Doe")
-        target_company = st.text_input("Company Name", placeholder="e.g. Nestle")
+        target_name = st.text_input("Full Name", placeholder="e.g. Chris Bokkers")
+        target_company = st.text_input("Company Name", placeholder="e.g. Novo Nordisk")
     with col2:
-        target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
+        target_function = st.text_input("Function / Job Title", placeholder="e.g. Supply Chain Planning")
         closeness = st.select_slider(
-            "How well do you know this contact?",
+            "Relationship level",
             options=CLOSENESS_OPTIONS,
-            value=CLOSENESS_OPTIONS[0],
-            help="Adjusts the opening tone and directness of the outreach messages",
+            value=CLOSENESS_OPTIONS[0]
         )
 
-    if st.button("🚀 Generate Outreach Analysis", type="primary"):
+    if st.button("🚀 Generate Analysis", type="primary"):
         if not gemini_key:
-            st.error("Please enter your Gemini API Key in the sidebar.")
+            st.error("Please enter your Gemini API Key.")
         elif not target_company or not target_name:
-            st.warning("Please provide at least a name and company.")
+            st.warning("Name and Company are required.")
         else:
-            with st.spinner(f"Researching {target_company} and drafting proposals..."):
+            with st.spinner(f"Analyzing {target_company}..."):
                 try:
-                    research = scan_company(target_company, gemini_key)
-                    active_situations = research.get("active_situations", [])
+                    # Stage 1: Research
+                    research = scan_company(target_company, gemini_key, target_function)
+                    
+                    # Stage 2: Drafting
                     situations = generate_situation_notes(
-                        target_company, target_function, active_situations, gemini_key, closeness)
+                        target_company, target_function, research["active_situations"], gemini_key, closeness
+                    )
                     positioning = generate_positioning_notes(
-                        target_company, target_function, gemini_key, closeness)
+                        target_company, target_function, gemini_key, closeness
+                    )
                     
                     st.session_state["result"] = {
                         "name": target_name,
@@ -77,65 +71,68 @@ with tab_single:
                         "positioning": positioning,
                     }
                 except Exception as e:
-                    st.error(f"Error during generation: {e}")
+                    st.error(f"Generation error: {e}")
 
     if "result" in st.session_state:
         res = st.session_state["result"]
         research = res["research"]
         
         st.divider()
-        st.header(f"📊 Situation Overview: {res['company']}")
+        st.header(f"📊 {res['company']} Situation")
         st.info(research.get("SUMMARY", "No summary available."))
         
         cols = st.columns(4)
         codes = [("RC", "🔴 Resource"), ("MP", "🟠 Margin"), ("SG", "🟢 Growth"), ("SCD", "🔵 Supply Chain")]
+        
         for i, (code, label) in enumerate(codes):
             with cols[i]:
                 score = research.get(f"{code}_score", 0)
                 status = research.get(f"{code}_status", "UNCLEAR")
-                signal = research.get(f"{code}_signal", "No specific signals found.")
-                st.markdown(f"**{label}** — {status} ({score}/10)")
-                st.caption(signal)
-
-        st.header("📝 Outreach Proposals")
-        t1, t2 = st.tabs(["🎯 Situation Notes (3 Options)", "🏢 XIMPAX Positioning (3 Options)"])
+                signal = research.get(f"{code}_signal", "")
+                st.markdown(f"**{label}**")
+                st.markdown(f"`{status}` ({score}/10)")
+                if signal: st.caption(signal)
+                
+        st.divider()
+        st.header("📝 Outreach & Positioning")
+        t1, t2 = st.tabs(["🎯 Tailored Notes", "🏢 XIMPAX Positioning"])
         with t1: st.write(res["situations"])
         with t2: st.write(res["positioning"])
-
-        st.divider()
-        # Requirement: Column 4 or 5 message output + Signals in separate columns
+        
+        # Data for export
         data = {
             "name": [res["name"]],
             "known_function": [res["function"]],
             "company": [res["company"]],
             "situation_notes": [res["situations"]],
-            "RC": [research.get("RC_signal", "")],
-            "SCD": [research.get("SCD_signal", "")],
-            "MP": [research.get("MP_signal", "")],
-            "SG": [research.get("SG_signal", "")],
-            "closeness_level": [res["closeness"]],
-            "company_summary": [research.get("SUMMARY", "")],
+            "positioning_notes": [res["positioning"]],
             "RC_score": [research.get("RC_score", 0)],
-            "MP_score": [research.get("MP_score", 0)],
-            "SG_score": [research.get("SG_score", 0)],
+            "RC_signal": [research.get("RC_signal", "")],
             "SCD_score": [research.get("SCD_score", 0)],
+            "SCD_signal": [research.get("SCD_signal", "")],
+            "MP_score": [research.get("MP_score", 0)],
+            "MP_signal": [research.get("MP_signal", "")],
+            "SG_score": [research.get("SG_score", 0)],
+            "SG_signal": [research.get("SG_signal", "")],
+            "summary": [research.get("SUMMARY", "")]
         }
         df = pd.DataFrame(data)
-        html_str = generate_html(df)
+        html_report = generate_html(df)
+        
         st.download_button(
-            label="🌐 Download HTML Report",
-            data=html_str.encode("utf-8"),
-            file_name=f"outreach_{res['company'].lower().replace(' ', '_')}.html",
+            "🌐 Download Report",
+            data=html_report.encode("utf-8"),
+            file_name=f"ximpax_{res['company'].lower().replace(' ', '_')}.html",
             mime="text/html",
-            use_container_width=True,
+            use_container_width=True
         )
 
 with tab_batch:
-    st.subheader("Batch Process Contacts")
-    uploaded_file = st.file_uploader("Upload CSV with columns: name, known_company, known_function, closeness_level", type="csv")
+    st.subheader("Batch Process")
+    uploaded_file = st.file_uploader("Upload CSV (name, known_company, known_function, closeness_level)", type="csv")
     
     if uploaded_file and gemini_key:
-        if st.button("▶️ Start Batch Processing"):
+        if st.button("▶️ Start Process"):
             df_in = pd.read_csv(uploaded_file)
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -143,22 +140,15 @@ with tab_batch:
             def update_progress(current, total, msg):
                 progress_bar.progress(current / total)
                 status_text.text(msg)
-                
-            res_df, raw_df = run_pipeline(df_in, gemini_key, update_progress)
             
-            st.success("Batch processing complete!")
+            res_df, _ = run_pipeline(df_in, gemini_key, update_progress)
             
-            col_dl1, col_dl2 = st.columns(2)
-            with col_dl1:
-                st.download_button("📥 Download Excel Results", 
-                                 data=res_df.to_csv(index=False).encode("utf-8"),
-                                 file_name="ximpax_results.csv",
-                                 mime="text/csv")
-            with col_dl2:
-                html_report = generate_html(res_df)
-                st.download_button("🌐 Download HTML Report",
-                                 data=html_report.encode("utf-8"),
-                                 file_name="ximpax_report.html",
-                                 mime="text/html")
-            
+            st.success("Complete!")
+            html_batch = generate_html(res_df)
+            st.download_button(
+                "🌐 Download HTML Report",
+                data=html_batch.encode("utf-8"),
+                file_name="ximpax_batch_report.html",
+                mime="text/html"
+            )
             st.dataframe(res_df)
