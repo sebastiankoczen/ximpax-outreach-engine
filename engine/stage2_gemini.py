@@ -46,18 +46,26 @@ Rules for each option:
 - NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, landscape, solutions.
 - Write ONLY the 3 numbered options. Nothing else."""
 
+POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX - a small Swiss team of senior supply chain and procurement experts. Generate exactly 3 short options (numbered 1/2/3) that Sebastian can use to describe XIMPAX.
+
+Angle 1: External taskforce - hands-on, embedded, not advisory.
+Angle 2: Industry experts - deep functional knowledge, real operator experience.
+Angle 3: NOT a consultancy - direct contrast to typical consulting firms.
+
+Rules:
+- Max 20 words per option.
+- Plain language - no jargon.
+- NEVER use: consultants, consulting, consultancy, solutions, leverage, stakeholders, resilience, optimise.
+- Each option must feel distinct.
+- Write ONLY the 3 numbered options. Nothing else."""
+
 def generate_situation_notes(company, function, active_situations, gemini_api_key) -> str:
     """Generates 3 situation-specific outreach proposals."""
     if not active_situations:
         return "No specific signals found to generate tailored proposals."
 
     client = genai.Client(api_key=gemini_api_key)
-    
-    signal_lines = "\
-".join(
-        f"- {s['label']} ({s['status']}): {s['signal']}" 
-        for s in active_situations[:3]
-    )
+    signal_lines = "\n".join(f"- {s['label']} ({s['status']}): {s['signal']}" for s in active_situations[:3])
     
     prompt = f"""Write 3 outreach proposals for Sebastian to:
 Contact: {function} at {company}
@@ -65,21 +73,26 @@ Contact: {function} at {company}
 Active company signals (use specific facts):
 {signal_lines}
 
-Each option references a DIFFERENT signal above. 
-Each is 50-70 words - specific, warm, like a knowledgeable colleague sharing a relevant observation.
-Reference the actual evidence by name. 
-End each with a simple meeting request.
-Plain language. No jargon. No mention of XIMPAX or consulting."""
+Each option references a DIFFERENT signal. End each with a simple meeting request. Plain language."""
 
     try:
         resp = client.models.generate_content(
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SITUATION_NOTES_SYSTEM,
-                temperature=0.85))
+            model=MODEL, contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=SITUATION_NOTES_SYSTEM, temperature=0.85))
         return resp.text.strip()
     except Exception as e:
         return f"[Error: {e}]"
-    finally:
-        time.sleep(PAUSE)
+    finally: time.sleep(PAUSE)
+
+def generate_positioning_notes(company, function, gemini_api_key) -> str:
+    """Generates 3 short XIMPAX positioning options."""
+    client = genai.Client(api_key=gemini_api_key)
+    prompt = f"Generate 3 positioning options for XIMPAX for a contact at {company} in the {function} function."
+    try:
+        resp = client.models.generate_content(
+            model=MODEL, contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=POSITIONING_SYSTEM, temperature=0.9))
+        return resp.text.strip()
+    except Exception as e:
+        return f"[Error: {e}]"
+    finally: time.sleep(PAUSE)
