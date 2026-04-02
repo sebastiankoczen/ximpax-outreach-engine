@@ -15,18 +15,18 @@ LABELS = {
 
 PROMPT = (
     "You are a business intelligence analyst. "
-    "Search the web RIGHT NOW for recent news about \"{company}\"."
+    "Search the web RIGHT NOW for recent news about \"{company}\". "
     "\n\n"
     "Find SPECIFIC evidence (last 18 months) for these 4 signals:\n"
-    "RC - Resource Constraints: layoffs, hiring freezes, restructuring, named cost programmes, capability gaps\n"
-    "MP - Margin Pressure: cost-cut targets, margin warnings, profitability decline, named efficiency programmes\n"
-    "SG - Significant Growth: M&A, new plant/capacity, market entry, major product launch, named expansion plans\n"
-    "SCD - Supply Chain Disruption: force majeure, supplier failures, nearshoring moves, logistics problems\n"
+    "RC - Resource Constraints: layoffs, hiring freezes, restructuring, named cost programmes\n"
+    "MP - Margin Pressure: cost-cut targets, margin warnings, profitability decline\n"
+    "SG - Significant Growth: M&A, new plant/capacity, market entry, major product launches\n"
+    "SCD - Supply Chain Disruption: force majeure, supplier failures, nearshoring, logistics problems\n"
     "\n"
-    "For each signal write 4-5 sentences using named programmes, real numbers, specific events and dates.\n"
+    "For each signal write 4-5 sentences with named programmes, real numbers, and specific dates.\n"
     "If nothing found for a category, say so and score low.\n"
     "\n"
-    "Scoring: named programme + number + date = 8-10 | indirect = 4-6 | nothing = 0-3\n"
+    "Scoring: named programme + number + date = 8-10 | indirect/implied = 4-6 | nothing = 0-3\n"
     "Status: CONFIRMED if >= 7 | LIKELY if 4-6 | UNCLEAR if <= 3\n"
     "\n"
     "Reply in EXACT format — no markdown, no asterisks:\n"
@@ -34,7 +34,7 @@ PROMPT = (
     "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
     "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
     "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
-    "SUMMARY: [2-3 sentence executive summary]\n"
+    "SUMMARY: [2-3 sentence executive summary of the most important findings]\n"
     "SOURCES: [key source names]\n"
     "\n"
     "Company: {company}\n"
@@ -49,23 +49,41 @@ def _enforce(score):
 
 
 def parse_result(text):
-    clean = re.sub(r"[*`#]+", "", text).strip()
+    # Strip markdown, HTML, and leading whitespace per line
+    clean = re.sub(r"[*`#_~]+", "", text)
+    clean = re.sub(r"<[^>]+>", "", clean)
+    clean = re.sub(r"^[ \t]+", "", clean, flags=re.MULTILINE)
+    clean = clean.strip()
+
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
-        pat = (
-            r"(?m)^" + code + r"\s*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|"
-            r"\s*(.+?)(?=\n\s*(?:RC|MP|SG|SCD|SUMMARY|SOURCES)\s*:|\Z)"
-        )
-        m = re.search(pat, clean, re.DOTALL | re.IGNORECASE)
-        if m:
-            score  = min(int(m.group(1)), 10)
-            signal = re.sub(r"\s+", " ", m.group(3)).strip()
-        else:
-            score, signal = 0, ""
+        score, signal = 0, ""
+        patterns = [
+            # Standard: RC: 7 | CONFIRMED | text
+            r"(?mi)^" + code + r"\s*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|\Z)",
+            # With label: RC (Resource Constraints): 7 | CONFIRMED | text
+            r"(?mi)^" + code + r"[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|\Z)",
+            # Status before score: RC: CONFIRMED | 7 | text
+            r"(?mi)^" + code + r"[^|\n]*:\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(\d+)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|\Z)",
+            # Fallback — no start-of-line anchor
+            r"(?i)" + code + r"[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|\Z)",
+        ]
+        for pat in patterns:
+            m = re.search(pat, clean, re.DOTALL)
+            if m:
+                g = m.groups()
+                if g[0].isdigit():
+                    score_raw, signal_raw = g[0], g[2]
+                else:
+                    score_raw, signal_raw = g[1], g[2]
+                score  = min(int(score_raw), 10)
+                signal = re.sub(r"\s+", " ", signal_raw).strip()
+                break
         out[code + "_score"]  = score
         out[code + "_status"] = _enforce(score)
         out[code + "_signal"] = signal
-    sm = re.search(r"SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|\Z)", clean, re.DOTALL)
+
+    sm = re.search(r"SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|\Z)", clean, re.DOTALL | re.IGNORECASE)
     out["SUMMARY"]    = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
     out["raw_output"] = text
     return out
@@ -86,7 +104,6 @@ def get_active(parsed):
 
 
 def _call_with_retry(client, model, contents, config, retries=2, wait=30):
-    """Call Gemini with automatic retry on 429 rate-limit errors."""
     for attempt in range(retries + 1):
         try:
             return client.models.generate_content(
@@ -105,7 +122,7 @@ def scan_company(company, api_key, industry_hint=""):
         industry_hint=industry_hint or "not specified"
     )
     try:
-        resp = _call_with_retry(
+        resp   = _call_with_retry(
             client, MODEL, prompt,
             types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())],
