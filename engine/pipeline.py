@@ -2,10 +2,10 @@ import time
 import pandas as pd
 from typing import Optional, Callable
 from .stage1_gemini import scan_company
-from .stage2_gemini import generate_situation_notes
+from .stage2_gemini import generate_situation_notes, generate_positioning_notes
 
 OUTPUT_COLS = [
-    "name", "known_function", "company", "situation_notes",
+    "name", "known_function", "company", "situation_notes", "positioning_notes",
     "closeness_level", "active_situations", "company_summary",
     "RC_score", "RC_status", "RC_signal",
     "MP_score", "MP_status", "MP_signal",
@@ -26,7 +26,6 @@ def run_pipeline(df, gemini_key, progress_cb=None):
         function = str(row.get("known_function", "")).strip()
         closeness = int(row.get("closeness_level", 3))
         company = str(row.get("known_company", "")).strip()
-        sit_override = str(row.get("company_situation", "")).strip()
         
         if company.lower() in ("nan", ""):
             company = ""
@@ -53,6 +52,7 @@ def run_pipeline(df, gemini_key, progress_cb=None):
             rec["company_summary"] = scan.get("SUMMARY", "")
             active_situations = scan.get("active_situations", [])
             rec["active_situations"] = "; ".join(f"{s['code']}:{s['status']}" for s in active_situations)
+            
             raw_stage1.append({"name": name, "company": company, "raw_output": scan.get("raw_output", "")})
         except Exception as e:
             rec["notes"] += f"Research error: {e} | "
@@ -64,7 +64,14 @@ def run_pipeline(df, gemini_key, progress_cb=None):
                 company=company,
                 function=function,
                 active_situations=active_situations,
-                gemini_api_key=gemini_key
+                gemini_api_key=gemini_key,
+                closeness=closeness
+            )
+            rec["positioning_notes"] = generate_positioning_notes(
+                company=company,
+                function=function,
+                gemini_api_key=gemini_key,
+                closeness=closeness
             )
         except Exception as e:
             rec["notes"] += f"Proposal error: {e}"
