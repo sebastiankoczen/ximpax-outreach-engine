@@ -1,21 +1,18 @@
-import io
 import streamlit as st
 import pandas as pd
-from engine.pipeline import run_pipeline
+from engine.stage1_gemini import scan_company
+from engine.stage2_gemini import generate_situation_notes, generate_positioning_notes
 from engine.html_output import generate_html
 
 st.set_page_config(page_title="XIMPAX Outreach Engine", page_icon="⚡", layout="wide")
 
 st.title("⚡ XIMPAX Outreach Engine")
-st.caption("Upload contacts → Research company signals → Generate 3 tailored outreach proposals")
+st.caption("Research a company and generate tailored outreach proposals for a specific contact.")
 
 with st.sidebar:
-    st.header("🔑 Gemini API Key")
+    st.header("🔑 Settings")
     gemini_key = st.text_input("Gemini API Key", type="password", 
                              value=st.secrets.get("GEMINI_API_KEY", ""))
-    st.divider()
-    st.markdown("**Required CSV columns:**")
-    st.code("name\nknown_function\ncloseness_level\nknown_company\n\nOptional:\ncompany_situation")
     st.divider()
     st.markdown("""
 **Closeness scale:**
@@ -32,92 +29,97 @@ with st.sidebar:
 🔵 SCD — Supply Chain Disruption
 """)
 
-uploaded = st.file_uploader("Upload contacts CSV (must include known_company column)", type="csv")
+# Input Fields
+st.subheader("👤 Target Contact")
+col1, col2 = st.columns(2)
+with col1:
+    target_name = st.text_input("Full Name", placeholder="e.g. John Doe")
+    target_company = st.text_input("Company Name", placeholder="e.g. Nestle")
+with col2:
+    target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
+    closeness_level = st.select_slider("Closeness Level", options=[1, 2, 3], value=3, 
+                                     help="1: Close, 2: Professional, 3: Cold/New")
 
-if uploaded:
-    df = pd.read_csv(uploaded)
-    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace("-", "_")
+if st.button("🚀 Generate Outreach Analysis", type="primary"):
+    if not gemini_key:
+        st.error("Please enter your Gemini API Key in the sidebar.")
+    elif not target_company or not target_name:
+        st.warning("Please provide at least a name and company.")
+    else:
+        with st.spinner(f"Researching {target_company} and drafting proposals..."):
+            try:
+                # Stage 1: Research
+                research = scan_company(target_company, gemini_key)
+                active_situations = research.get("active_situations", [])
+                
+                # Stage 2: Drafting
+                situations = generate_situation_notes(target_company, target_function, active_situations, gemini_key)
+                positioning = generate_positioning_notes(target_company, target_function, gemini_key)
+                
+                # Store in session state
+                st.session_state["result"] = {
+                    "name": target_name,
+                    "company": target_company,
+                    "function": target_function,
+                    "research": research,
+                    "situations": situations,
+                    "positioning": positioning
+                }
+            except Exception as e:
+                st.error(f"Error during generation: {e}")
+
+# Output Display
+if "result" in st.session_state:
+    res = st.session_state["result"]
+    research = res["research"]
     
-    required = ["name", "known_function", "closeness_level", "known_company"]
-    missing = [c for c in required if c not in df.columns]
+    st.divider()
     
-    if missing:
-        st.error(f"❌ Missing columns: **{', '.join(missing)}**")
-        st.stop()
-        
-    blank = df[df["known_company"].astype(str).str.strip().isin(["", "nan"])]
-    if not blank.empty:
-        st.warning(f"⚠️ {len(blank)} contacts have no company — they will be skipped.")
-        
-    st.subheader(f"📋 {len(df)} contacts loaded")
-    st.dataframe(df[["name", "known_function", "closeness_level", "known_company"]], use_container_width=True)
-
-    if st.button("🚀 Generate Proposals", type="primary"):
-        if not gemini_key:
-            st.error("Please enter your Gemini API Key in the sidebar.")
-            st.stop()
-            
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        def cb(done, total, msg):
-            progress_bar.progress(int(done / total * 100) if total else 0)
-            status_text.info(msg)
-            
-        with st.spinner("Researching and writing proposals..."):
-            all_df, raw_df = run_pipeline(
-                df=df,
-                gemini_key=gemini_key,
-                progress_cb=cb,
-            )
-            
-        status_text.success("✅ Done!")
-        progress_bar.progress(100)
-
-        # Store in session state
-        xlsx = io.BytesIO()
-        with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
-            all_df.to_excel(writer, sheet_name="All Contacts", index=False)
-        xlsx.seek(0)
-        
-        st.session_state["all_df"] = all_df
-        st.session_state["xlsx_bytes"] = xlsx.read()
-        st.session_state["html_str"] = generate_html(all_df)
-
-if "all_df" in st.session_state:
-    all_df = st.session_state["all_df"]
+    # 1. Research Overview
+    st.header(f"📊 Situation Overview: {res['company']}")
+    st.info(research.get("SUMMARY", "No summary available."))
     
-    tab1, tab2 = st.tabs(["💬 Outreach Proposals", "📊 Research Signals"])
+    # Signals Grid
+    cols = st.columns(4)
+    codes = [("RC", "Resource"), ("MP", "Margin"), ("SG", "Growth"), ("SCD", "Supply Chain")]
+    for i, (code, label) in enumerate(codes):
+        with cols[i]:
+            status = research.get(f"{code}_status", "UNCLEAR")
+            signal = research.get(f"{code}_signal", "No specific signals found.")
+            st.markdown(f"**{label}** ({status})")
+            st.caption(signal)
+
+    # 2. Outreach Proposals
+    st.header("📝 Outreach Proposals")
+    tab1, tab2 = st.tabs(["🎯 Situational Notes (3 Options)", "🏢 XIMPAX Positioning (3 Options)"])
     
     with tab1:
-        st.dataframe(
-            all_df[["name", "company", "situation_notes", "known_function"]], 
-            use_container_width=True)
-            
-    with tab2:
-        sig_cols = ["name", "company", "company_summary", 
-                   "RC_status", "RC_signal", 
-                   "MP_status", "MP_signal", 
-                   "SG_status", "SG_signal", 
-                   "SCD_status", "SCD_signal"]
-        st.dataframe(all_df[[c for c in sig_cols if c in all_df.columns]], use_container_width=True)
+        st.write(res["situations"])
         
+    with tab2:
+        st.write(res["positioning"])
+
+    # 3. Downloads
     st.divider()
-    st.markdown("### ⬇️ Download Results")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            label="📊 Download Excel",
-            data=st.session_state["xlsx_bytes"],
-            file_name="outreach_output.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    with col2:
-        st.download_button(
-            label="🌐 Download HTML Report",
-            data=st.session_state["html_str"].encode("utf-8"),
-            file_name="outreach_messages.html",
-            mime="text/html",
-            use_container_width=True,
-        )
+    # Create a simple DF for the HTML generator
+    data = {
+        "name": [res["name"]],
+        "company": [res["company"]],
+        "known_function": [res["function"]],
+        "situation_notes": [res["situations"]],
+        "company_summary": [research.get("SUMMARY", "")],
+        "RC_status": [research.get("RC_status", "")], "RC_signal": [research.get("RC_signal", "")],
+        "MP_status": [research.get("MP_status", "")], "MP_signal": [research.get("MP_signal", "")],
+        "SG_status": [research.get("SG_status", "")], "SG_signal": [research.get("SG_signal", "")],
+        "SCD_status": [research.get("SCD_status", "")], "SCD_signal": [research.get("SCD_signal", "")]
+    }
+    df = pd.DataFrame(data)
+    html_str = generate_html(df)
+    
+    st.download_button(
+        label="🌐 Download HTML Report",
+        data=html_str.encode("utf-8"),
+        file_name=f"outreach_{res['company'].lower()}.html",
+        mime="text/html",
+        use_container_width=True
+    )
