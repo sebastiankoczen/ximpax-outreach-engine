@@ -33,8 +33,8 @@ ROLE_AFFINITY = {
 }
 
 SIGNAL_ANGLES = {
-    "RC":  "we bring in experienced people quickly to support the team without a long ramp-up",
-    "MP":  "we have helped similar companies cut costs through better category management and supplier deals",
+    "RC":  "we bring in experienced people quickly to cover gaps without a long ramp-up",
+    "MP":  "we have helped similar companies cut costs through sharper category management and supplier negotiations",
     "SG":  "we help build the procurement and planning structure needed to grow without losing control",
     "SCD": "we help reduce supply risk by rethinking sourcing strategies and building backup options",
 }
@@ -45,23 +45,25 @@ CLOSENESS = {
     3: "Barely know each other - professional, respectful, no over-familiarity.",
 }
 
-MSG_SYSTEM = """You write short LinkedIn InMail messages for Sebastian Koczen, who runs XIMPAX - a small Swiss team of senior supply chain and procurement experts.
+MSG_SYSTEM = """You write short LinkedIn InMail messages for Sebastian Koczen.
 
-TONE AND STYLE - follow all without exception:
-- Plain everyday language. No jargon, no complex words.
-- Sound like a real person writing to a colleague - not a sales pitch.
-- Go straight to the point. Reference something specific about the company situation.
-- MAX 80 words. Count them.
-- End with a simple, direct ask for a short meeting: e.g. "Would you be open to a quick call?" or "Could we find 20 minutes?"
-- NEVER start with "I wanted to reach out", "I hope this finds you well" or similar.
-- NEVER mention AI, automation, or that this was generated.
-- NEVER call XIMPAX a consultancy or the team consultants.
-- NEVER use: resilience, optimise, leverage, synergies, value proposition, stakeholders, holistic, landscape, solutions.
-- One mention of XIMPAX max - just the name, no long description.
-- LinkedIn InMail format - no subject line, no "Dear X", no sign-off.
-- Write ONLY the message. Nothing else.
+THE MESSAGE IS ONLY A HOOK - it must:
+1. Reference something specific and real about the company situation (a named programme, a number, a known event)
+2. Show you understand what that means for someone in their role
+3. End with a simple, direct meeting request
 
-XIMPAX context (one sentence max in message): {ximpax_profile}"""
+THAT IS ALL. The message contains NO description of XIMPAX, NO company pitch, NO services listed.
+Sebastian will add his own positioning separately after sending.
+
+STRICT RULES:
+- MAX 60 words. Count them.
+- Plain everyday language - like a smart colleague talking to another
+- NEVER mention XIMPAX, consultancy, consultants, experts, or any company description
+- NEVER start with "I wanted to reach out", "I hope this finds you well", "I noticed your role"
+- NEVER use: resilience, optimise, leverage, synergies, stakeholders, holistic, landscape, solutions
+- NEVER mention AI or automation
+- No subject line, no "Dear X", no sign-off
+- Write ONLY the message. Nothing else."""
 
 POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX - a small Swiss team of senior supply chain and procurement experts.
 
@@ -84,12 +86,12 @@ These are 3 optional paragraphs - one per active company signal - that Sebastian
 Rules:
 - Exactly 3 paragraphs, numbered 1/2/3
 - Each references a DIFFERENT active signal (RC, MP, SG or SCD)
-- Each paragraph is 80-100 words. Long enough to be specific, personal and useful.
+- Each paragraph is 60-80 words. Specific, personal and useful.
 - Plain, direct language - like one senior colleague talking to another
-- Each must reference real, specific evidence from the signal: named programmes, numbers, events, divisions
-- Write it as a natural, warm observation a knowledgeable colleague would share - not a sales pitch
-- Show that XIMPAX understands the situation deeply - reference the specific challenge and how similar situations have played out
-- NEVER mention AI, automation, consulting, consultancy, consultants
+- Each must reference real, specific evidence: named programmes, numbers, events, divisions
+- Write as a natural, warm observation - like a knowledgeable colleague sharing what they noticed
+- Show understanding of what the situation means for someone in the contact's specific role
+- NEVER mention AI, automation, consulting, consultancy, consultants, XIMPAX
 - NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, landscape
 - Write ONLY the 3 numbered paragraphs. Nothing else."""
 
@@ -104,47 +106,45 @@ def _role_priority(function: str) -> list:
 
 def _signals_block(active: list, role_priority: list) -> str:
     if not active:
-        return "No specific signals found. Base message on a realistic challenge for their role and industry."
+        return "No specific signals confirmed. Write a short, direct message based on a realistic challenge typical for their role and industry. Keep it credible - do not invent specifics."
     order = {c: i for i, c in enumerate(role_priority)}
     ranked = sorted(active, key=lambda s: order.get(s["code"], 99))
     primary = ranked[0]
     lines = [
-        f"LEAD WITH THIS (most relevant for their role):",
-        f"  Signal: {primary['label']} ({primary['status']})",
+        "LEAD WITH THIS signal (most relevant for their role):",
+        f"  Signal type: {primary['label']} ({primary['status']})",
         f"  Evidence: {primary['signal']}",
-        f"  Angle: {SIGNAL_ANGLES.get(primary['code'], '')}",
         "",
-        "Other signals (use only if space allows):",
+        "Other signals (do NOT mention in message - use as context only):",
     ]
     for s in ranked[1:]:
-        lines.append(f"  - {s['label']} ({s['status']}): {s['signal']}")
+        lines.append(f"  - {s['label']}: {s['signal'][:120]}")
     return "\n".join(lines)
 
 
 def generate_message(name, company, function, closeness_level, active_situations, company_summary, ximpax_profile, gemini_api_key) -> str:
     client = genai.Client(api_key=gemini_api_key)
-    system = MSG_SYSTEM.format(ximpax_profile=ximpax_profile)
     tone = CLOSENESS.get(closeness_level, CLOSENESS[3])
     priority = _role_priority(function)
     signals = _signals_block(active_situations, priority)
-    prompt = f"""Write a LinkedIn InMail from Sebastian to:
+    prompt = f"""Write a LinkedIn InMail hook from Sebastian to:
 Name: {name}
 Title: {function}
 Company: {company}
 Tone: {tone}
 
-What we know about {company}:
-{company_summary or "No specific research - use what you know about this company and industry."}
+Company context:
+{company_summary or "No specific research available."}
 
 {signals}
 
-MAX 80 words. Plain language. End with meeting request. No jargon. No AI mention."""
+REMEMBER: MAX 60 words. NO mention of XIMPAX or any company. Pure hook - specific situation reference + meeting ask."""
     try:
         resp = client.models.generate_content(
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=system,
+                system_instruction=MSG_SYSTEM,
                 temperature=0.75))
         return resp.text.strip()
     except Exception as e:
@@ -185,18 +185,17 @@ def generate_situation_notes(company, function, active_situations, gemini_api_ke
         f"- {s['label']} ({s['status']}): {s['signal']}"
         for s in active_situations[:3]
     )
-    prompt = f"""Write 3 situation-specific add-on paragraphs for a LinkedIn InMail from Sebastian at XIMPAX.
+    prompt = f"""Write 3 situation-specific add-on paragraphs for a LinkedIn InMail from Sebastian.
 
 Contact: {function} at {company}
 
-Active company signals (use the specific facts below - named programmes, numbers, events):
+Active company signals (use the specific facts - named programmes, numbers, events):
 {signal_lines}
 
 Each paragraph references a DIFFERENT signal above.
-Each is 80-100 words - specific, warm, like a knowledgeable colleague sharing a relevant observation.
-Reference the actual evidence: name the programmes, the numbers, the events.
-Show understanding of what this means for someone in the contact's role.
-Plain language. No jargon. No consulting speak."""
+Each is 60-80 words - specific, warm, like a knowledgeable colleague sharing a relevant observation.
+Reference the actual evidence by name. Show you understand what it means for someone in their role.
+Plain language. No jargon. No mention of XIMPAX or consulting."""
     try:
         resp = client.models.generate_content(
             model=MODEL,
