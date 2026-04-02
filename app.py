@@ -21,9 +21,9 @@ with st.sidebar:
     st.divider()
     st.markdown("""
 **Closeness level — affects message tone:**
-🧊 **Cold** — formal, reference a specific public fact to open
-🤝 **Professional** — slightly warmer, reference shared context
-👋 **Regular** — direct, skip the intro, get to the point
+🧊 **Cold** — formal, open with a specific public fact
+🤝 **Professional** — warmer, reference shared context
+👋 **Regular** — direct, skip intro, get to the point
 """)
     st.divider()
     st.markdown("""
@@ -37,8 +37,8 @@ with st.sidebar:
 st.subheader("👤 Target Contact")
 col1, col2 = st.columns(2)
 with col1:
-    target_name    = st.text_input("Full Name",        placeholder="e.g. John Doe")
-    target_company = st.text_input("Company Name",     placeholder="e.g. Nestle")
+    target_name    = st.text_input("Full Name",            placeholder="e.g. John Doe")
+    target_company = st.text_input("Company Name",         placeholder="e.g. Nestle")
 with col2:
     target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
     closeness = st.select_slider(
@@ -56,11 +56,11 @@ if st.button("🚀 Generate Outreach Analysis", type="primary"):
     else:
         with st.spinner(f"Researching {target_company} and drafting proposals..."):
             try:
-                research         = scan_company(target_company, gemini_key)
+                research          = scan_company(target_company, gemini_key)
                 active_situations = research.get("active_situations", [])
-                situations       = generate_situation_notes(
+                situations        = generate_situation_notes(
                     target_company, target_function, active_situations, gemini_key, closeness)
-                positioning      = generate_positioning_notes(
+                positioning       = generate_positioning_notes(
                     target_company, target_function, gemini_key, closeness)
                 st.session_state["result"] = {
                     "name":      target_name,
@@ -83,7 +83,7 @@ if "result" in st.session_state:
     st.info(research.get("SUMMARY", "No summary available."))
 
     cols  = st.columns(4)
-    codes = [("RC", "🔴 Resource"), ("MP", "🟠 Margin"), ("SG", "🟢 Growth"), ("SCD", "🔵 Supply Chain")]
+    codes = [("RC","🔴 Resource"), ("MP","🟠 Margin"), ("SG","🟢 Growth"), ("SCD","🔵 Supply Chain")]
     for i, (code, label) in enumerate(codes):
         with cols[i]:
             score  = research.get(f"{code}_score", 0)
@@ -91,6 +91,13 @@ if "result" in st.session_state:
             signal = research.get(f"{code}_signal", "No specific signals found.")
             st.markdown(f"**{label}** — {status} ({score}/10)")
             st.caption(signal)
+
+    # Debug expander — shows raw Gemini output if signals are all UNCLEAR
+    raw = research.get("raw_output", "")
+    active_count = len(research.get("active_situations", []))
+    if raw and active_count == 0:
+        with st.expander("⚠️ No signals parsed — click to see raw Gemini output for debugging"):
+            st.code(raw[:3000], language="text")
 
     st.header("📝 Outreach Proposals")
     tab1, tab2 = st.tabs(["🎯 Situation Notes (3 Options)", "🏢 XIMPAX Positioning (3 Options)"])
@@ -101,14 +108,14 @@ if "result" in st.session_state:
 
     st.divider()
     data = {
-        "name":           [res["name"]],
-        "company":        [res["company"]],
-        "known_function": [res["function"]],
-        "situation_notes":  [res["situations"]],
+        "name":            [res["name"]],
+        "company":         [res["company"]],
+        "known_function":  [res["function"]],
+        "situation_notes": [res["situations"]],
         "positioning_notes": [res["positioning"]],
-        "company_summary":  [research.get("SUMMARY", "")],
+        "company_summary": [research.get("SUMMARY", "")],
         "linkedin_message": [""],
-        "notes":            [""],
+        "notes":           [""],
         "RC_score":  [research.get("RC_score",  0)], "RC_status":  [research.get("RC_status",  "UNCLEAR")], "RC_signal":  [research.get("RC_signal",  "")],
         "MP_score":  [research.get("MP_score",  0)], "MP_status":  [research.get("MP_status",  "UNCLEAR")], "MP_signal":  [research.get("MP_signal",  "")],
         "SG_score":  [research.get("SG_score",  0)], "SG_status":  [research.get("SG_status",  "UNCLEAR")], "SG_signal":  [research.get("SG_signal",  "")],
