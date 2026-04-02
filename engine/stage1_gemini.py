@@ -1,101 +1,124 @@
-import re, time
+import re
+import time
 from google import genai
 from google.genai import types
 
 MODEL = "gemini-2.0-flash"
-PAUSE = 2
+PAUSE = 8
 
-LABELS = {"RC": "Resource Constraints", "MP": "Margin Pressure",
-          "SG": "Significant Growth", "SCD": "Supply Chain Disruption"}
+LABELS = {
+    "RC":  "Resource Constraints",
+    "MP":  "Margin Pressure",
+    "SG":  "Significant Growth",
+    "SCD": "Supply Chain Disruption",
+}
 
-PROMPT = """You are a strategic business analyst with deep knowledge of global companies.
-Using everything you know about the company "{company}", assess their current business situation.
-
-Assess signals for these 4 categories based on what you know:
-- RC (Resource Constraints): staffing shortages, hiring freezes, restructuring, layoffs, capability gaps
-- MP (Margin Pressure): cost reduction programmes, profitability challenges, price pressure, margin warnings
-- SG (Significant Growth): M&A, market expansion, new product launches, IPO, scaling, new markets
-- SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges, supplier issues
-
-Scoring per category:
-- STRONG evidence (named programme, specific number, known announcement) = score 7-10
-- MEDIUM/implied evidence = score 4-6
-- No evidence = score 0-3
-
-For each category write 4-5 specific sentences using:
-- Named programmes (e.g. "Tailor Made cost programme", "Project Phoenix")
-- Real numbers where known (e.g. "EUR 400M savings target", "2,000 job cuts")
-- Specific events or announcements
-- Named divisions or business units where relevant
-- If you don't have specific information, say so honestly and score low
-
-Reply in this EXACT format (no markdown, no bold, no asterisks, no bullet points in the signal text):
-RC: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
-MP: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
-SG: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
-SCD: [score 0-10] | [CONFIRMED/LIKELY/UNCLEAR] | [4-5 sentence signal summary]
-SUMMARY: [2-3 sentence executive summary of the most important challenges and opportunities]
-SOURCES: [mention key known sources e.g. annual reports, press releases, news]
-
-Company: {company}
-Industry hint: {industry_hint}"""
+PROMPT = (
+    "You are a business intelligence analyst. "
+    "Search the web RIGHT NOW for recent news about \"{company}\"."
+    "\n\n"
+    "Find SPECIFIC evidence (last 18 months) for these 4 signals:\n"
+    "RC - Resource Constraints: layoffs, hiring freezes, restructuring, named cost programmes, capability gaps\n"
+    "MP - Margin Pressure: cost-cut targets, margin warnings, profitability decline, named efficiency programmes\n"
+    "SG - Significant Growth: M&A, new plant/capacity, market entry, major product launch, named expansion plans\n"
+    "SCD - Supply Chain Disruption: force majeure, supplier failures, nearshoring moves, logistics problems\n"
+    "\n"
+    "For each signal write 4-5 sentences using named programmes, real numbers, specific events and dates.\n"
+    "If nothing found for a category, say so and score low.\n"
+    "\n"
+    "Scoring: named programme + number + date = 8-10 | indirect = 4-6 | nothing = 0-3\n"
+    "Status: CONFIRMED if >= 7 | LIKELY if 4-6 | UNCLEAR if <= 3\n"
+    "\n"
+    "Reply in EXACT format — no markdown, no asterisks:\n"
+    "RC: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
+    "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
+    "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
+    "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [4-5 sentence signal]\n"
+    "SUMMARY: [2-3 sentence executive summary]\n"
+    "SOURCES: [key source names]\n"
+    "\n"
+    "Company: {company}\n"
+    "Industry: {industry_hint}\n"
+)
 
 
-def parse_result(text: str) -> dict:
-    text = re.sub(r'\*+', '', text)
-    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+def _enforce(score):
+    if score >= 7:   return "CONFIRMED"
+    if score >= 4:   return "LIKELY"
+    return "UNCLEAR"
+
+
+def parse_result(text):
+    clean = re.sub(r"[*`#]+", "", text).strip()
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
-        m = re.search(
-            rf"{code}:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES):|$)",
-            text, re.DOTALL)
-        raw_score = min(int(m.group(1)), 10) if m else 0
-        if raw_score >= 7:
-            status = "CONFIRMED"
-        elif raw_score >= 4:
-            status = "LIKELY"
+        pat = (
+            r"(?m)^" + code + r"\s*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|"
+            r"\s*(.+?)(?=\n\s*(?:RC|MP|SG|SCD|SUMMARY|SOURCES)\s*:|\Z)"
+        )
+        m = re.search(pat, clean, re.DOTALL | re.IGNORECASE)
+        if m:
+            score  = min(int(m.group(1)), 10)
+            signal = re.sub(r"\s+", " ", m.group(3)).strip()
         else:
-            status = "UNCLEAR"
-        out[f"{code}_score"] = raw_score
-        out[f"{code}_status"] = status
-        out[f"{code}_signal"] = m.group(3).strip() if m else ""
-    sm = re.search(r"SUMMARY:\s*(.+?)(?=SOURCES:|$)", text, re.DOTALL)
-    out["SUMMARY"] = sm.group(1).strip() if sm else ""
-    srm = re.search(r"SOURCES:\s*(.+?)$", text, re.DOTALL)
-    out["SOURCES"] = srm.group(1).strip() if srm else ""
+            score, signal = 0, ""
+        out[code + "_score"]  = score
+        out[code + "_status"] = _enforce(score)
+        out[code + "_signal"] = signal
+    sm = re.search(r"SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|\Z)", clean, re.DOTALL)
+    out["SUMMARY"]    = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
     out["raw_output"] = text
     return out
 
 
-def get_active(parsed: dict) -> list:
+def get_active(parsed):
     active = []
     for code in ["RC", "MP", "SG", "SCD"]:
-        if parsed.get(f"{code}_status") in ("CONFIRMED", "LIKELY"):
-            active.append({"code": code, "label": LABELS[code],
-                           "score": parsed[f"{code}_score"],
-                           "status": parsed[f"{code}_status"],
-                           "signal": parsed[f"{code}_signal"]})
+        if parsed[code + "_status"] in ("CONFIRMED", "LIKELY") and parsed[code + "_signal"]:
+            active.append({
+                "code":   code,
+                "label":  LABELS[code],
+                "score":  parsed[code + "_score"],
+                "status": parsed[code + "_status"],
+                "signal": parsed[code + "_signal"],
+            })
     return sorted(active, key=lambda x: -x["score"])
 
 
-def scan_company(company: str, api_key: str, industry_hint: str = "") -> dict:
+def _call_with_retry(client, model, contents, config, retries=2, wait=30):
+    """Call Gemini with automatic retry on 429 rate-limit errors."""
+    for attempt in range(retries + 1):
+        try:
+            return client.models.generate_content(
+                model=model, contents=contents, config=config)
+        except Exception as e:
+            if "429" in str(e) and attempt < retries:
+                time.sleep(wait)
+                continue
+            raise
+
+
+def scan_company(company, api_key, industry_hint=""):
     client = genai.Client(api_key=api_key)
-    prompt = PROMPT.format(company=company, industry_hint=industry_hint or "not specified")
+    prompt = PROMPT.format(
+        company=company,
+        industry_hint=industry_hint or "not specified"
+    )
     try:
-        resp = client.models.generate_content(
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3
+        resp = _call_with_retry(
+            client, MODEL, prompt,
+            types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.1,
             )
         )
         parsed = parse_result(resp.text)
     except Exception as e:
         parsed = parse_result("")
-        parsed["SUMMARY"] = f"Error scanning {company}: {e}"
-        parsed["error"] = str(e)
+        parsed["SUMMARY"] = "Stage1 error for " + company + ": " + str(e)
+        parsed["error"]   = str(e)
     finally:
         time.sleep(PAUSE)
-    parsed["company"] = company
+    parsed["company"]           = company
     parsed["active_situations"] = get_active(parsed)
     return parsed
