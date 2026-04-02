@@ -17,10 +17,11 @@ SITUATION_NOTES_SYSTEM = (
     "Rules for each option:\n"
     "- Exactly 3 options, numbered 1. / 2. / 3.\n"
     "- Each references a DIFFERENT active signal (RC, MP, SG or SCD) from the research.\n"
+    "- Tailor to the function: Procurement reacts to margin pressure; Planning/Supply Chain reacts to disruption.\n"
     "- Each paragraph is 50-70 words. Specific, direct and professional.\n"
     "- Use plain, everyday language — like one senior colleague talking to another.\n"
     "- Reference real, specific evidence: named programmes, numbers, events, or divisions.\n"
-    "- Show you understand what the situation means for someone in the contact\'s specific role.\n"
+    "- Show you understand what the situation means for someone in the contact's specific role.\n"
     "- Each MUST end with a simple, direct request for a brief meeting.\n"
     "- NEVER mention XIMPAX, AI, automation, consulting, consultancy, or consultants.\n"
     "- NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, solutions.\n"
@@ -34,21 +35,13 @@ POSITIONING_SYSTEM = (
     "Angle 1: External taskforce — hands-on, embedded, not advisory.\n"
     "Angle 2: Industry experts — deep functional knowledge, real operator experience.\n"
     "Angle 3: NOT a consultancy — direct contrast to typical consulting firms.\n"
-    "Rules:\n"
-    "- Max 20 words per option.\n"
-    "- Plain language — no jargon.\n"
-    "- NEVER use: consultants, consulting, consultancy, solutions, leverage, stakeholders, resilience, optimise.\n"
-    "- Each option must feel distinct.\n"
-    "- Write ONLY the 3 numbered options. Nothing else."
 )
-
 
 def _closeness_tag(closeness):
     c = str(closeness).lower()
-    if "cold" in c or "never" in c:        return "cold"
+    if "cold" in c or "never" in c:      return "cold"
     if "professional" in c or "once" in c: return "professional"
     return "regular"
-
 
 def _call_with_retry(client, model, contents, config, retries=2, wait=30):
     """Retry on 429 rate-limit errors with a configurable wait."""
@@ -62,17 +55,19 @@ def _call_with_retry(client, model, contents, config, retries=2, wait=30):
                 continue
             raise
 
-
 def generate_situation_notes(company, function, active_situations,
-                              gemini_api_key, closeness="") -> str:
+                            gemini_api_key, closeness="") -> str:
     if not active_situations:
-        return "No specific signals found — re-run Stage 1 or check API key."
-    client    = genai.Client(api_key=gemini_api_key)
+        return "No specific signals found - re-run Stage 1 or check API key."
+    
+    client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
+    
     sig_lines = "\n".join(
         "- " + s["label"] + " (" + s["status"] + ", score " + str(s["score"]) + "/10): " + s["signal"]
         for s in active_situations[:3]
     )
+
     prompt = (
         "Write 3 outreach proposals for Sebastian to:\n"
         "Contact: " + function + " at " + company + "\n"
@@ -80,6 +75,7 @@ def generate_situation_notes(company, function, active_situations,
         "Tone instruction: " + tone_hint + "\n"
         "Each option references a DIFFERENT signal. End each with a meeting request. Plain language."
     )
+
     try:
         resp = _call_with_retry(
             client, MODEL, prompt,
@@ -91,27 +87,29 @@ def generate_situation_notes(company, function, active_situations,
     except Exception as e:
         time.sleep(PAUSE)
         if "429" in str(e):
-            return "Rate limit reached — please wait 60 seconds and try again."
+            return "Rate limit reached - please wait 60 seconds and try again."
         return "[Error: " + str(e) + "]"
 
-
 def generate_positioning_notes(company, function, gemini_api_key, closeness="") -> str:
-    client    = genai.Client(api_key=gemini_api_key)
+    client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
-    prompt    = (
+    
+    prompt = (
         "Generate 3 positioning options for XIMPAX for a contact at " + company +
-        " in the " + function + " function.\nTone: " + tone_hint
+        " in the " + function + " function.\n"
+        "Tone: " + tone_hint
     )
+
     try:
         resp = _call_with_retry(
             client, MODEL, prompt,
             types.GenerateContentConfig(
                 system_instruction=POSITIONING_SYSTEM,
-                temperature=0.9))
+                temperature=0.85))
         time.sleep(PAUSE)
         return resp.text.strip()
     except Exception as e:
         time.sleep(PAUSE)
         if "429" in str(e):
-            return "Rate limit reached — please wait 60 seconds and try again."
+            return "Rate limit reached - please wait 60 seconds and try again."
         return "[Error: " + str(e) + "]"
