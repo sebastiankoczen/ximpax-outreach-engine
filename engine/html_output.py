@@ -1,115 +1,165 @@
 import re
+import html as hl
+
+
+def _split_numbered(text):
+    """Split '1. text\n2. text\n3. text' into list of (num, text) tuples."""
+    if not text or str(text).strip() in ("", "nan"):
+        return []
+    clean = re.sub(r"[*`]+", "", str(text)).strip()
+    # Split on numbered list markers: 1. / 1) / Option 1: etc.
+    parts = re.split(r"(?m)^\s*(?:Option\s*)?([123])[.):]\s*", clean)
+    # re.split with capture groups: [pre, num, text, num, text, ...]
+    results = []
+    if len(parts) >= 3:
+        i = 1
+        while i + 1 < len(parts):
+            num  = parts[i].strip()
+            body = parts[i + 1].strip()
+            if body:
+                results.append((num, body))
+            i += 2
+    if not results:
+        # Fallback: split on double newlines or single newlines between chunks
+        chunks = [c.strip() for c in re.split(r"\n{2,}", clean) if c.strip()]
+        results = [(str(i + 1), c) for i, c in enumerate(chunks[:3])]
+    return results[:3]
+
+
+CSS = (
+    "* {box-sizing:border-box;margin:0;padding:0}"
+    "body {font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+    "background:#f0f2f5;color:#1a1a2e;padding:28px 20px}"
+    "h1 {font-size:22px;font-weight:700;color:#0a66c2;margin-bottom:3px}"
+    ".sub {font-size:13px;color:#888;margin-bottom:20px}"
+    ".card {background:#fff;border-radius:14px;padding:22px 24px;margin-bottom:18px;"
+    "box-shadow:0 1px 6px rgba(0,0,0,.08);border-left:4px solid #0a66c2}"
+    ".ch {display:flex;justify-content:space-between;align-items:flex-start;"
+    "margin-bottom:16px;gap:12px;flex-wrap:wrap}"
+    ".cn {font-size:16px;font-weight:700}"
+    ".cm {font-size:12px;color:#666;margin-top:2px}"
+    ".ct {background:#e8f0fe;color:#0a66c2;font-size:12px;font-weight:600;"
+    "padding:5px 12px;border-radius:20px;white-space:nowrap}"
+    ".sec {margin-bottom:16px}"
+    ".hl {font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;"
+    "letter-spacing:.5px;margin-bottom:8px}"
+    ".ht {font-weight:400;font-size:10px;color:#aaa;text-transform:none;letter-spacing:0}"
+    ".sig-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:16px}"
+    ".sig {padding:12px;border-radius:8px;font-size:12px}"
+    ".sig-rc {background:#fee2e2} .sig-mp {background:#ffedd5}"
+    ".sig-sg {background:#dcfce7} .sig-scd {background:#dbeafe}"
+    ".sig-score {font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;"
+    "background:rgba(0,0,0,.08);margin-left:4px}"
+    ".opt {background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;"
+    "padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:background .15s;position:relative}"
+    ".opt:hover {background:#eef2ff;border-color:#c7d2fe}"
+    ".opt-num {display:inline-flex;align-items:center;justify-content:center;"
+    "width:22px;height:22px;background:#0a66c2;color:#fff;border-radius:50%;"
+    "font-size:11px;font-weight:700;margin-right:8px;flex-shrink:0;vertical-align:middle}"
+    ".opt-body {font-size:13px;line-height:1.65;color:#1a1a2e;white-space:pre-wrap}"
+    ".toast {position:fixed;bottom:24px;right:24px;background:#1a1a2e;color:#fff;"
+    "padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;"
+    "transition:opacity .3s;pointer-events:none;z-index:999}"
+    ".toast.show {opacity:1}"
+)
+
+JS = (
+    "function cp(el){"
+    "var t=el.querySelector('.opt-body');"
+    "navigator.clipboard.writeText(t.innerText).then(function(){"
+    "var x=document.getElementById('ts');"
+    "x.classList.add('show');"
+    "setTimeout(function(){x.classList.remove('show');},2000);});}"
+)
+
+
+def _sig_block(row):
+    parts = []
+    meta = [
+        ("RC",  "Resource Constraints", "sig-rc"),
+        ("MP",  "Margin Pressure",       "sig-mp"),
+        ("SG",  "Significant Growth",    "sig-sg"),
+        ("SCD", "Supply Chain Disruption", "sig-scd"),
+    ]
+    for code, label, cls in meta:
+        status = str(row.get(code + "_status", "UNCLEAR"))
+        score  = int(row.get(code + "_score", 0) or 0)
+        signal = str(row.get(code + "_signal", "")).strip()
+        if status == "UNCLEAR" or not signal or signal == "nan":
+            continue
+        parts.append(
+            "<div class='sig " + cls + "'>"
+            "<strong>" + hl.escape(label) + "</strong>"
+            "<span class='sig-score'>" + status + " " + str(score) + "/10</span>"
+            "<br><span style='color:#555;'>" + hl.escape(signal[:200]) + "</span>"
+            "</div>"
+        )
+    if not parts:
+        return ""
+    return (
+        "<div class='sec'>"
+        "<div class='hl'>📋 Company Situation</div>"
+        "<div class='sig-grid'>" + "".join(parts) + "</div>"
+        "</div>"
+    )
+
+
+def _option_cards(raw, section_label, hint):
+    items = _split_numbered(raw)
+    if not items:
+        return ""
+    cards = ""
+    for num, body in items:
+        cards += (
+            "<div class='opt' onclick='cp(this)'>"
+            "<span class='opt-num'>" + num + "</span>"
+            "<span class='opt-body'>" + hl.escape(body) + "</span>"
+            "</div>"
+        )
+    return (
+        "<div class='sec'>"
+        "<div class='hl'>" + section_label + " <span class='ht'>" + hint + "</span></div>"
+        + cards +
+        "</div>"
+    )
+
 
 def generate_html(df):
-    """Generates a clean HTML report for outreach proposals and research."""
-    
-    html = ["""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>XIMPAX Outreach Engine - Results</title>
-        <style>
-            :root {
-                --primary: #2563eb;
-                --bg: #f8fafc;
-                --card: #ffffff;
-                --text: #1e293b;
-                --border: #e2e8f0;
-                --rc: #ef4444; --mp: #f97316; --sg: #22c55e; --scd: #3b82f6;
-            }
-            body { font-family: sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; line-height: 1.5; }
-            .container { max-width: 900px; margin: 0 auto; }
-            .card { background: var(--card); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; padding: 24px; border: 1px solid var(--border); }
-            h1, h2, h3 { color: var(--text); margin-top: 0; }
-            .section { margin-bottom: 30px; }
-            .outreach-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
-            .option { border: 1px solid var(--border); border-radius: 6px; padding: 16px; background: #fff; cursor: pointer; position: relative; }
-            .option:hover { background: #f1f5f9; }
-            .option-label { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; color: var(--primary); display: block; margin-bottom: 5px; }
-            .signals { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-            .sig { padding: 12px; border-radius: 6px; font-size: 0.8rem; }
-            .sig-rc { background: #fee2e2; } .sig-mp { background: #ffedd5; } .sig-sg { background: #dcfce7; } .sig-scd { background: #dbeafe; }
-            .toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: #fff; padding: 10px 20px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>XIMPAX Outreach Report</h1>
-    """]
-    
+    cards = []
     for _, row in df.iterrows():
-        name = row.get('name', 'N/A')
-        comp = row.get('company', 'N/A')
-        func = row.get('known_function', 'N/A')
-        
-        html.append(f"""
-            <div class="card">
-                <h2>{name} — {func} at {comp}</h2>
-                
-                <div class="section">
-                    <h3>📊 Situation Overview</h3>
-                    <p><i>{row.get('company_summary', 'N/A')}</i></p>
-                    <div class="signals">
-                        <div class="sig sig-rc"><strong>Resource:</strong> {row.get('RC_status', 'N/A')}<br>{row.get('RC_signal', '')}</div>
-                        <div class="sig sig-mp"><strong>Margin:</strong> {row.get('MP_status', 'N/A')}<br>{row.get('MP_signal', '')}</div>
-                        <div class="sig sig-sg"><strong>Growth:</strong> {row.get('SG_status', 'N/A')}<br>{row.get('SG_signal', '')}</div>
-                        <div class="sig sig-scd"><strong>Supply Chain:</strong> {row.get('SCD_status', 'N/A')}<br>{row.get('SCD_signal', '')}</div>
-                    </div>
-                </div>
+        name    = hl.escape(str(row.get("name", "")))
+        func    = hl.escape(str(row.get("known_function", "")))
+        company = hl.escape(str(row.get("company", "")))
+        sit_raw = str(row.get("situation_notes", ""))
+        pos_raw = str(row.get("positioning_notes", ""))
 
-                <div class="section">
-                    <h3>🎯 Situational Notes (Click to Copy)</h3>
-                    <div class="outreach-grid">
-        """)
-        
-        notes = row.get('situation_notes', '')
-        parts = re.split(r'\n?\d+\.\s', notes)
-        for i, p in enumerate([pt for pt in parts if pt.strip()][:3]):
-            html.append(f"""
-                        <div class="option" onclick="copyText(this)">
-                            <span class="option-label">Option {i+1}</span>
-                            <div class="content">{p.strip().replace('\n', '<br>')}</div>
-                        </div>
-            """)
+        sig_sec = _sig_block(row)
+        sit_sec = _option_cards(sit_raw, "💡 Situation Notes", "(click to copy)")
+        pos_sec = _option_cards(pos_raw, "✏️ XIMPAX Positioning", "(click to copy)")
 
-        html.append("""
-                    </div>
-                </div>
+        cards.append(
+            "<div class='card'>"
+            "<div class='ch'>"
+            "<div><div class='cn'>" + name + "</div><div class='cm'>" + func + "</div></div>"
+            "<span class='ct'>" + company + "</span>"
+            "</div>"
+            + sig_sec + sit_sec + pos_sec +
+            "</div>"
+        )
 
-                <div class="section">
-                    <h3>🏢 Positioning Options (Click to Copy)</h3>
-                    <div class="outreach-grid">
-        """)
-
-        pos_notes = row.get('positioning_notes', '')
-        pos_parts = re.split(r'\n?\d+\.\s', pos_notes)
-        for i, p in enumerate([pt for pt in pos_parts if pt.strip()][:3]):
-             html.append(f"""
-                        <div class="option" onclick="copyText(this)">
-                            <span class="option-label">Option {i+1}</span>
-                            <div class="content">{p.strip()}</div>
-                        </div>
-            """)
-
-        html.append("</div></div></div>")
-
-    html.append("""
-        </div>
-        <div id="toast" class="toast">Copied!</div>
-        <script>
-            function copyText(el) {
-                const text = el.querySelector('.content').innerText;
-                navigator.clipboard.writeText(text).then(() => {
-                    const toast = document.getElementById('toast');
-                    toast.style.opacity = '1';
-                    setTimeout(() => { toast.style.opacity = '0'; }, 2000);
-                });
-            }
-        </script>
-    </body>
-    </html>
-    """)
-    
-    return "".join(html)
+    total = len(df)
+    return (
+        "<!DOCTYPE html><html lang='en'><head>"
+        "<meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>XIMPAX Outreach Report</title>"
+        "<style>" + CSS + "</style>"
+        "</head><body>"
+        "<h1>⚡ XIMPAX Outreach Report</h1>"
+        "<p class='sub'>" + str(total) + " contact" + ("s" if total != 1 else "") +
+        " — click any card to copy text</p>"
+        + "".join(cards)
+        + "<div class='toast' id='ts'>✅ Copied!</div>"
+        "<script>" + JS + "</script>"
+        "</body></html>"
+    )
