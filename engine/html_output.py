@@ -14,11 +14,12 @@ td { padding: 12px 15px; border-bottom: 1px solid #eee; vertical-align: top; }
 .meta { font-size: 14px; color: #0a66c2; font-weight: 600; margin-bottom: 15px; }
 .summary-box { background: #f0f7ff; border-left: 4px solid #0a66c2; padding: 15px; margin: 15px 0; font-size: 14px; font-style: italic; }
 .signal-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 5px; color: #fff; }
-.sig-RC { background: #d93025; }
-.sig-MP { background: #f29900; }
+.sig-RC { background: #f5c518; color: #333; }
+.sig-MP { background: #d93025; }
 .sig-SG { background: #1e8e3e; }
 .sig-SCD { background: #1a73e8; }
 .proposal { background: #f8f9fa; border-left: 4px solid #e0e0e0; padding: 15px; margin-top: 10px; font-size: 14px; white-space: pre-wrap; }
+.positioning { background: #f0f7ff; border-left: 4px solid #0a66c2; padding: 15px; margin-top: 10px; font-size: 14px; white-space: pre-wrap; }
 """
 
 
@@ -39,14 +40,22 @@ def _split_numbered(text):
 
 
 def generate_html(df):
-    table_header = "<thead><tr><th>Target</th><th>RC</th><th>MP</th><th>SG</th><th>SCD</th></tr></thead>"
+    # Signal order: RC, SCD, MP, SG with correct colors
+    SIGNAL_ORDER = [
+        ("RC",  "Resource Constraints",    "sig-RC"),
+        ("SCD", "Supply Chain Disruption", "sig-SCD"),
+        ("MP",  "Margin Pressure",         "sig-MP"),
+        ("SG",  "Significant Growth",      "sig-SG"),
+    ]
+
+    table_header = "<thead><tr><th>Target</th><th>RC</th><th>SCD</th><th>MP</th><th>SG</th></tr></thead>"
     table_rows = []
     rows_html = []
 
     for _, row in df.iterrows():
         # Row for overview table
         tr = f"<tr><td><b>{hl.escape(str(row.get('name', '')))}</b><br><small>{hl.escape(str(row.get('company', '')))}</small></td>"
-        for code in ["RC", "MP", "SG", "SCD"]:
+        for code, label, css_class in SIGNAL_ORDER:
             val = str(row.get(f"{code}_score", ""))
             if val != '':
                 val = f"{code}: {val}/10"
@@ -64,28 +73,44 @@ def generate_html(df):
         if summary and str(summary).strip() not in ("", "nan"):
             card += f"<div class='summary-box'><strong>Strategic Summary:</strong><br><br>{hl.escape(str(summary))}</div>"
 
+        # Signals in order: RC, SCD, MP, SG
         signals = []
-        for code in ["RC", "MP", "SG", "SCD"]:
+        for code, label, css_class in SIGNAL_ORDER:
             sig_text = str(row.get(f'{code}_signal', ''))
+            score = str(row.get(f'{code}_score', ''))
+            status = str(row.get(f'{code}_status', ''))
             if sig_text and sig_text.strip() not in ("", "nan"):
-                signals.append(f"<div style='margin-bottom:8px'><span class='signal-tag sig-{code}'>{code}</span> <span style='font-size:12px'>{hl.escape(sig_text)}</span></div>")
+                # Render bullet points
+                bullets_raw = [b.strip() for b in sig_text.split("- ") if b.strip()]
+                if len(bullets_raw) > 1:
+                    bullets_html = "".join(f"<li>{hl.escape(b)}</li>" for b in bullets_raw)
+                    sig_content = f"<ul style='margin:4px 0 0 16px;padding:0;font-size:12px'>{bullets_html}</ul>"
+                else:
+                    sig_content = f"<span style='font-size:12px'>{hl.escape(sig_text)}</span>"
+                signals.append(
+                    f"<div style='margin-bottom:12px'>"
+                    f"<span class='signal-tag {css_class}'>{code}</span> "
+                    f"<strong style='font-size:12px'>{hl.escape(label)}</strong> "
+                    f"<span style='font-size:11px;color:#666'>{hl.escape(status)} ({score}/10)</span>"
+                    f"<br>{sig_content}</div>"
+                )
         card += "".join(signals)
 
-        # Outreach Options
+        # Outreach Proposals
         card += "<div style='margin-top:20px;padding-top:10px;border-top:2px solid #eee;font-weight:700;color:#0a66c2'>OUTREACH PROPOSALS</div>"
         options = _split_numbered(row.get('situation_notes', ''))
         for num, body in options:
             card += f"<div style='margin-top:15px;font-weight:600;font-size:12px;color:#666'>Option {num}</div>"
             card += f"<div class='proposal'>{hl.escape(body)}</div>"
 
-        # Positioning Options
+        # XIMPAX Positioning (inline, below proposals)
         pos_notes = row.get('positioning_notes', '')
         if pos_notes and str(pos_notes).strip() not in ("", "nan"):
             card += "<div style='margin-top:25px;padding-top:10px;border-top:2px solid #eee;font-weight:700;color:#0a66c2'>XIMPAX POSITIONING</div>"
             p_options = _split_numbered(pos_notes)
             for num, body in p_options:
                 card += f"<div style='margin-top:15px;font-weight:600;font-size:12px;color:#666'>Angle {num}</div>"
-                card += f"<div class='proposal' style='background:#f0f7ff;border-left-color:#0a66c2'>{hl.escape(body)}</div>"
+                card += f"<div class='positioning'>{hl.escape(body)}</div>"
 
         card += "</div>"
         rows_html.append(card)
