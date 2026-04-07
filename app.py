@@ -9,6 +9,7 @@ from engine.pipeline import run_pipeline
 st.set_page_config(page_title="XIMPAX Outreach Engine", page_icon="⚡", layout="wide")
 st.title("⚡ XIMPAX Outreach Engine")
 st.caption("Research a company and generate tailored outreach proposals for a specific contact.")
+# v2
 
 
 def _strip_preamble(text):
