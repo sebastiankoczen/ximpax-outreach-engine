@@ -68,11 +68,25 @@ with tab_single:
         st.header(f"📊 {res['company']} Situation")
         st.info(research.get("SUMMARY", "No summary available."))
 
-        # Sources
+        # Sources — shown inline as clickable links (Title|URL format)
         sources = research.get("SOURCES", "")
         if sources and sources.strip():
-            with st.expander("🔗 Sources"):
-                st.markdown(sources)
+            source_links = []
+            for line in sources.strip().splitlines():
+                line = line.strip().strip("-").strip()
+                if "|" in line:
+                    parts = line.split("|", 1)
+                    title, url = parts[0].strip(), parts[1].strip()
+                    if url.startswith("http"):
+                        source_links.append(f"[{title}]({url})")
+                    else:
+                        source_links.append(title)
+                elif line.startswith("http"):
+                    source_links.append(f"[Link]({line})")
+                elif line:
+                    source_links.append(line)
+            if source_links:
+                st.caption("🔗 **Sources:** " + "  ·  ".join(source_links))
 
         # Signals in order: RC, SCD, MP, SG
         codes = [
