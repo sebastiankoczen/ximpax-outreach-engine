@@ -37,7 +37,7 @@ PROMPT = (
     "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
     "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
     "SUMMARY: [1 sentence: the single most critical business situation for this company right now]\n"
-    "SOURCES: [list up to 3 key source names or URLs]\n"
+    "SOURCES: [list up to 5 source URLs in format: Title|URL — one per line, e.g. Reuters|https://reuters.com/...]\n"
     "\n"
     "Company: {company}\n"
     "Industry: {industry_hint}\n"
@@ -108,7 +108,7 @@ def parse_result(text):
     sm = re.search(r"(?i)SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|$)", clean, re.DOTALL)
     out["SUMMARY"] = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
 
-    src = re.search(r"(?i)SOURCES\s*:\s*(.+?)$", clean, re.DOTALL)
+    src = re.search(r"(?i)SOURCES\s*:\s*(.+?)$", clean, re.DOTALL | re.MULTILINE)
     out["SOURCES"] = src.group(1).strip() if src else ""
 
     out["raw_output"] = text
