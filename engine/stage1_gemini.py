@@ -37,7 +37,6 @@ PROMPT = (
     "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
     "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
     "SUMMARY: [1 sentence: the single most critical business situation for this company right now]\n"
-    "SOURCES: [list up to 5 source URLs in format: Title|URL — one per line, e.g. Reuters|https://reuters.com/...]\n"
     "\n"
     "Company: {company}\n"
     "Industry: {industry_hint}\n"
@@ -52,13 +51,10 @@ def _enforce(score):
 
 def _prose_to_bullets(text, n=3):
     """Split prose into up to n bullet points by sentence boundaries."""
-    # Split on sentence-ending punctuation followed by space or end
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    # Filter out empty or very short fragments
     sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
     if not sentences:
         return text
-    # Take up to n sentences, merge remainder into last bucket if more than n
     if len(sentences) <= n:
         bullets = sentences
     else:
@@ -66,8 +62,38 @@ def _prose_to_bullets(text, n=3):
     return "\n".join(f"- {s}" for s in bullets)
 
 
+def _extract_grounding_sources(resp):
+    """Extract source titles and URIs from Gemini grounding metadata."""
+    sources = []
+    try:
+        candidates = resp.candidates or []
+        for candidate in candidates:
+            gm = getattr(candidate, "grounding_metadata", None)
+            if not gm:
+                continue
+            chunks = getattr(gm, "grounding_chunks", []) or []
+            for chunk in chunks:
+                web = getattr(chunk, "web", None)
+                if web:
+                    title = getattr(web, "title", "") or ""
+                    uri = getattr(web, "uri", "") or ""
+                    if uri and title:
+                        sources.append({"title": title, "uri": uri})
+                    elif uri:
+                        sources.append({"title": uri, "uri": uri})
+    except Exception:
+        pass
+    # Deduplicate by URI
+    seen = set()
+    unique = []
+    for s in sources:
+        if s["uri"] not in seen:
+            seen.add(s["uri"])
+            unique.append(s)
+    return unique
+
+
 def parse_result(text):
-    # Strip markdown artifacts but preserve newlines
     clean = re.sub(r"[\*\`#~]+", "", text)
     clean = re.sub(r"<[^>]+>", "", clean)
     clean = clean.strip()
@@ -80,12 +106,10 @@ def parse_result(text):
         if m:
             score = min(int(m.group(1)), 10)
             raw_signal = m.group(3).strip()
-            # Try to find explicit bullet lines first
-            bullet_lines = re.findall(r"^\s*[-•]\s*(.+)", raw_signal, re.MULTILINE)
+            bullet_lines = re.findall(r"^\s*[-\u2022]\s*(.+)", raw_signal, re.MULTILINE)
             if len(bullet_lines) >= 2:
                 signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
             else:
-                # Model returned prose - split into 3 sentence bullets client-side
                 signal = _prose_to_bullets(raw_signal, n=3)
         else:
             fallback = rf"(?i){code}\s*:[^\d]*(\d+)"
@@ -96,7 +120,7 @@ def parse_result(text):
                 mt = re.search(txt_pat, clean, re.DOTALL)
                 if mt:
                     raw_signal = mt.group(1).strip()
-                    bullet_lines = re.findall(r"^\s*[-•]\s*(.+)", raw_signal, re.MULTILINE)
+                    bullet_lines = re.findall(r"^\s*[-\u2022]\s*(.+)", raw_signal, re.MULTILINE)
                     if len(bullet_lines) >= 2:
                         signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
                     else:
@@ -107,10 +131,7 @@ def parse_result(text):
 
     sm = re.search(r"(?i)SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|$)", clean, re.DOTALL)
     out["SUMMARY"] = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
-
-    src = re.search(r"(?i)SOURCES\s*:\s*(.+?)$", clean, re.DOTALL | re.MULTILINE)
-    out["SOURCES"] = src.group(1).strip() if src else ""
-
+    out["SOURCES"] = []  # Will be populated from grounding metadata
     out["raw_output"] = text
     return out
 
@@ -156,23 +177,8 @@ def scan_company(company, api_key, industry_hint=""):
             )
         )
         parsed = parse_result(resp.text)
-        # Extract real URLs from Gemini grounding metadata — more reliable than text
-        try:
-            chunks = resp.candidates[0].grounding_metadata.grounding_chunks
-            seen, sources = set(), []
-            for chunk in chunks:
-                if hasattr(chunk, "web") and chunk.web:
-                    url   = chunk.web.uri or ""
-                    title = (chunk.web.title or url)[:60].strip()
-                    if url and url not in seen:
-                        seen.add(url)
-                        sources.append(f"{title}|{url}")
-                if len(sources) >= 5:
-                    break
-            if sources:
-                parsed["SOURCES"] = "\n".join(sources)
-        except Exception:
-            pass  # fall back to text-parsed SOURCES
+        # Extract all sources from grounding metadata
+        parsed["SOURCES"] = _extract_grounding_sources(resp)
     except Exception as e:
         parsed = parse_result("")
         parsed["SUMMARY"] = f"Stage1 error for {company}: {str(e)}"
