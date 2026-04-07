@@ -90,10 +90,8 @@ with tab_single:
                 st.markdown(f"**{label}**")
                 st.markdown(f"`{status}` ({score}/10)")
                 if signal:
-                    # Render each newline-separated sentence as a bullet
-                    bullets = [b.strip() for b in signal.split("\n") if b.strip()]
-                    for b in bullets:
-                        st.markdown(f"- {b}")
+                    # Signal text already has "- " prefixes from stage1 — render directly
+                    st.markdown(signal)
 
         st.divider()
         st.header("📝 Outreach Proposals")
