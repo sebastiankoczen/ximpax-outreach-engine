@@ -10,12 +10,6 @@ st.set_page_config(page_title="XIMPAX Outreach Engine", page_icon="⚡", layout=
 st.title("⚡ XIMPAX Outreach Engine")
 st.caption("Research a company and generate tailored outreach proposals for a specific contact.")
 
-CLOSENESS_OPTIONS = [
-    "❄️ Cold — never met or exchanged messages",
-    "🤝 Know professionally — met once or twice",
-    "📞 Regular contact — speak fairly often",
-]
-
 
 def _strip_preamble(text):
     """Remove any introductory sentence before the first numbered option."""
@@ -28,13 +22,6 @@ def _strip_preamble(text):
 with st.sidebar:
     st.header("🔍 Settings")
     gemini_key = st.text_input("Gemini API Key", type="password", value=st.secrets.get("GEMINI_API_KEY", ""))
-    st.divider()
-    st.markdown("""
-**Closeness level** — affects message tone:
-- **Cold**: Evidence-heavy, formal.
-- **Professional**: Warm, collegial.
-- **Regular**: Direct, brief, personal.
-""")
 
 tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"])
 
@@ -46,11 +33,6 @@ with tab_single:
         target_company = st.text_input("Company Name", placeholder="e.g. Company AG")
     with col2:
         target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
-        closeness = st.select_slider(
-            "Relationship level",
-            options=CLOSENESS_OPTIONS,
-            value=CLOSENESS_OPTIONS[0]
-        )
 
     if st.button("🚀 Generate Analysis", type="primary"):
         if not gemini_key:
@@ -62,16 +44,15 @@ with tab_single:
                 try:
                     research = scan_company(target_company, gemini_key, target_function)
                     situations = generate_situation_notes(
-                        target_company, target_function, research["active_situations"], gemini_key, closeness
+                        target_company, target_function, research["active_situations"], gemini_key
                     )
                     positioning = generate_positioning_notes(
-                        target_company, target_function, gemini_key, closeness
+                        target_company, target_function, gemini_key
                     )
                     st.session_state["result"] = {
                         "name": target_name,
                         "company": target_company,
                         "function": target_function,
-                        "closeness": closeness,
                         "research": research,
                         "situations": _strip_preamble(situations),
                         "positioning": _strip_preamble(positioning),
@@ -109,8 +90,10 @@ with tab_single:
                 st.markdown(f"**{label}**")
                 st.markdown(f"`{status}` ({score}/10)")
                 if signal:
-                    # Signal is stored with \n between bullets - render as markdown
-                    st.markdown(signal)
+                    # Render each newline-separated sentence as a bullet
+                    bullets = [b.strip() for b in signal.split("\n") if b.strip()]
+                    for b in bullets:
+                        st.markdown(f"- {b}")
 
         st.divider()
         st.header("📝 Outreach Proposals")
@@ -154,7 +137,7 @@ with tab_single:
 
 with tab_batch:
     st.subheader("Batch Process")
-    uploaded_file = st.file_uploader("Upload CSV (name, known_company, known_function, closeness_level)", type="csv")
+    uploaded_file = st.file_uploader("Upload CSV (name, known_company, known_function)", type="csv")
     if uploaded_file and gemini_key:
         if st.button("▶️ Start Process"):
             df_in = pd.read_csv(uploaded_file)
