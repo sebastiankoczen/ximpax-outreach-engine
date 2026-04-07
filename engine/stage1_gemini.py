@@ -156,6 +156,23 @@ def scan_company(company, api_key, industry_hint=""):
             )
         )
         parsed = parse_result(resp.text)
+        # Extract real URLs from Gemini grounding metadata — more reliable than text
+        try:
+            chunks = resp.candidates[0].grounding_metadata.grounding_chunks
+            seen, sources = set(), []
+            for chunk in chunks:
+                if hasattr(chunk, "web") and chunk.web:
+                    url   = chunk.web.uri or ""
+                    title = (chunk.web.title or url)[:60].strip()
+                    if url and url not in seen:
+                        seen.add(url)
+                        sources.append(f"{title}|{url}")
+                if len(sources) >= 5:
+                    break
+            if sources:
+                parsed["SOURCES"] = "\n".join(sources)
+        except Exception:
+            pass  # fall back to text-parsed SOURCES
     except Exception as e:
         parsed = parse_result("")
         parsed["SUMMARY"] = f"Stage1 error for {company}: {str(e)}"
