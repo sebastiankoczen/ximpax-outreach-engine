@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 from engine.stage1_gemini import scan_company
@@ -14,6 +15,15 @@ CLOSENESS_OPTIONS = [
     "🤝 Know professionally — met once or twice",
     "📞 Regular contact — speak fairly often",
 ]
+
+
+def _strip_preamble(text):
+    """Remove any introductory sentence before the first numbered option."""
+    if not text:
+        return text
+    m = re.search(r"(1\.\s+.+)", text, re.DOTALL)
+    return m.group(1).strip() if m else text.strip()
+
 
 with st.sidebar:
     st.header("🔍 Settings")
@@ -32,10 +42,10 @@ with tab_single:
     st.subheader("Target Contact")
     col1, col2 = st.columns(2)
     with col1:
-        target_name = st.text_input("Full Name", placeholder="e.g. Chris Bokkers")
-        target_company = st.text_input("Company Name", placeholder="e.g. Novo Nordisk")
+        target_name = st.text_input("Full Name", placeholder="e.g. A. Smith")
+        target_company = st.text_input("Company Name", placeholder="e.g. Company AG")
     with col2:
-        target_function = st.text_input("Function / Job Title", placeholder="e.g. Supply Chain Planning")
+        target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
         closeness = st.select_slider(
             "Relationship level",
             options=CLOSENESS_OPTIONS,
@@ -50,25 +60,21 @@ with tab_single:
         else:
             with st.spinner(f"Analyzing {target_company}..."):
                 try:
-                    # Stage 1: Research
                     research = scan_company(target_company, gemini_key, target_function)
-
-                    # Stage 2: Drafting
                     situations = generate_situation_notes(
                         target_company, target_function, research["active_situations"], gemini_key, closeness
                     )
                     positioning = generate_positioning_notes(
                         target_company, target_function, gemini_key, closeness
                     )
-
                     st.session_state["result"] = {
                         "name": target_name,
                         "company": target_company,
                         "function": target_function,
                         "closeness": closeness,
                         "research": research,
-                        "situations": situations,
-                        "positioning": positioning,
+                        "situations": _strip_preamble(situations),
+                        "positioning": _strip_preamble(positioning),
                     }
                 except Exception as e:
                     st.error(f"Generation error: {e}")
@@ -81,7 +87,13 @@ with tab_single:
         st.header(f"📊 {res['company']} Situation")
         st.info(research.get("SUMMARY", "No summary available."))
 
-        # Signals in order: RC, SCD, MP, SG with correct colors and full names
+        # Sources
+        sources = research.get("SOURCES", "")
+        if sources and sources.strip():
+            with st.expander("🔗 Sources"):
+                st.markdown(sources)
+
+        # Signals in order: RC, SCD, MP, SG
         codes = [
             ("RC",  "🟡 Resource Constraints"),
             ("SCD", "🔵 Supply Chain Disruption"),
@@ -97,13 +109,8 @@ with tab_single:
                 st.markdown(f"**{label}**")
                 st.markdown(f"`{status}` ({score}/10)")
                 if signal:
-                    # Render bullet points: signal is space-collapsed, split on " - " pattern
-                    bullets = [b.strip() for b in signal.split("- ") if b.strip()]
-                    if len(bullets) > 1:
-                        for b in bullets:
-                            st.markdown(f"- {b}")
-                    else:
-                        st.caption(signal)
+                    # Signal is stored with \n between bullets - render as markdown
+                    st.markdown(signal)
 
         st.divider()
         st.header("📝 Outreach Proposals")
@@ -122,13 +129,18 @@ with tab_single:
             "positioning_notes": [res["positioning"]],
             "RC_score": [research.get("RC_score", 0)],
             "RC_signal": [research.get("RC_signal", "")],
+            "RC_status": [research.get("RC_status", "")],
             "SCD_score": [research.get("SCD_score", 0)],
             "SCD_signal": [research.get("SCD_signal", "")],
+            "SCD_status": [research.get("SCD_status", "")],
             "MP_score": [research.get("MP_score", 0)],
             "MP_signal": [research.get("MP_signal", "")],
+            "MP_status": [research.get("MP_status", "")],
             "SG_score": [research.get("SG_score", 0)],
             "SG_signal": [research.get("SG_signal", "")],
-            "summary": [research.get("SUMMARY", "")]
+            "SG_status": [research.get("SG_status", "")],
+            "summary": [research.get("SUMMARY", "")],
+            "sources": [research.get("SOURCES", "")],
         }
         df = pd.DataFrame(data)
         html_report = generate_html(df)
