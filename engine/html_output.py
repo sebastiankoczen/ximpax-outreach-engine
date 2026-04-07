@@ -7,10 +7,14 @@ def _split_numbered(text):
 3. text' into list of (num, text) tuples."""
     if not text or str(text).strip() in ("", "nan"):
         return []
+    
     clean = re.sub(r"[*`]+", "", str(text)).strip()
+    
     # Split on numbered list markers: 1. / 1) / Option 1: etc.
-    parts = re.split(r"(?m)^\s*(?:Option\s*)?([123])[.):]\s*", clean)
+    # Updated to handle any digit (\d+) instead of just [123]
+    parts = re.split(r"(?m)^\s*(?:Option\s*)?(\d+)[.):]\s*", clean)
     results = []
+    
     if len(parts) >= 3:
         i = 1
         while i + 1 < len(parts):
@@ -19,12 +23,14 @@ def _split_numbered(text):
             if body:
                 results.append((num, body))
             i += 2
+            
     if not results:
-        # Fallback: split on double newlines or single newlines between chunks
-        chunks = [c.strip() for c in re.split(r"
-{2,}", clean) if c.strip()]
-        results = [(str(i + 1), c) for i, c in enumerate(chunks[:3])]
-    return results[:3]
+        # Fallback: split on double newlines or similar
+        chunks = [c.strip() for c in re.split(r"\s*[\r
+]{2,}\s*", clean) if c.strip()]
+        results = [(str(i + 1), c) for i, c in enumerate(chunks[:5])]
+        
+    return results[:5]
 
 CSS = (
     "* {box-sizing:border-box;margin:0;padding:0}"
@@ -41,6 +47,7 @@ CSS = (
     "box-shadow:0 1px 6px rgba(0,0,0,.08);border-left:5px solid #0a66c2}"
     ".name {font-size:18px;font-weight:700;color:#0a66c2;margin-bottom:4px}"
     ".meta {font-size:13px;color:#888;margin-bottom:15px;border-bottom:1px solid #f0f0f0;padding-bottom:10px}"
+    ".summary-box {background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:15px;font-size:13px;border:1px solid #ffeeba}"
     ".signal-tag {display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-right:5px;background:#eee}"
     ".sig-RC {background:#ffebee;color:#c62828}"
     ".sig-MP {background:#fff3e0;color:#ef6c00}"
@@ -62,6 +69,7 @@ def generate_html(df) -> str:
     )
     
     table_rows = []
+    
     for _, row in df.iterrows():
         # Table Row
         tr = "<tr>"
@@ -87,10 +95,15 @@ def generate_html(df) -> str:
         card += f"<div class='name'>{hl.escape(str(row.get('name', '')))}</div>"
         card += f"<div class='meta'>{hl.escape(str(row.get('known_function', '')))} @ {hl.escape(str(row.get('company', '')))}</div>"
         
+        # Summary Box
+        summary = row.get('company_summary') or row.get('summary', '')
+        if summary and str(summary).strip() not in ("", "nan"):
+            card += f"<div class='summary-box'><strong>Strategic Summary:</strong><br>{hl.escape(str(summary))}</div>"
+        
         signals = []
         for code in ["RC", "MP", "SG", "SCD"]:
             sig_text = str(row.get(f'{code}_signal', ''))
-            if sig_text:
+            if sig_text and sig_text.strip() not in ("", "nan"):
                 signals.append(f"<div style='margin-bottom:8px'><span class='signal-tag sig-{code}'>{code}</span> <span style='font-size:12px'>{hl.escape(sig_text)}</span></div>")
         
         card += "".join(signals)
@@ -110,10 +123,10 @@ def generate_html(df) -> str:
             for num, body in p_options:
                 card += f"<div style='margin-top:15px;font-weight:600;font-size:12px;color:#666'>Angle {num}</div>"
                 card += f"<div class='proposal' style='background:#f0f7ff;border-left-color:#0a66c2'>{hl.escape(body)}</div>"
-        
+                
         card += "</div>"
         rows_html.append(card)
-
+        
     html = (
         f"<!DOCTYPE html><html><head><meta charset='utf-8'><style>{CSS}</style></head><body>"
         f"<h1>XIMPAX Outreach Report</h1>"
@@ -122,4 +135,5 @@ def generate_html(df) -> str:
         f"{''.join(rows_html)}"
         f"</body></html>"
     )
+    
     return html
