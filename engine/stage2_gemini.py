@@ -11,57 +11,36 @@ CLOSENESS_TONE = {
     "regular": "Skip formal introductions entirely. Be direct and personal. Assume they know who Sebastian is.",
 }
 
-SITUATION_NOTES_SYSTEM = (
-    "You write situation-specific outreach proposals for Sebastian Koczen. "
-    "These are 3 alternative options Sebastian can use for a LinkedIn InMail.
-"
-    "Rules for each option:
-"
-    "- Exactly 3 options, numbered 1. / 2. / 3.
-"
-    "- Each references a DIFFERENT active signal (RC, MP, SG or SCD) from the research.
-"
-    "- Tailor to the function: Procurement reacts to margin pressure; Planning/Supply Chain reacts to disruption.
-"
-    "- Each paragraph is 50-70 words. Specific, direct and professional.
-"
-    "- Use plain, everyday language — like one senior colleague talking to another.
-"
-    "- Reference real, specific evidence: named programmes, numbers, events, or divisions.
-"
-    "- Show you understand what the situation means for someone in the contact's specific role.
-"
-    "- Each MUST end with a simple, direct request for a brief meeting.
-"
-    "- NEVER mention XIMPAX, AI, automation, consulting, consultancy, or consultants.
-"
-    "- NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, solutions.
-"
-    "- Write ONLY the 3 numbered options. Nothing else."
-)
+SITUATION_NOTES_SYSTEM = """You write situation-specific outreach proposals for Sebastian Koczen.
+These are 3 alternative options Sebastian can use for a LinkedIn InMail.
 
-POSITIONING_SYSTEM = (
-    "You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain "
-    "and procurement experts. Generate exactly 3 short options (numbered 1. / 2. / 3.) that Sebastian "
-    "can use to describe XIMPAX.
-"
-    "Angle 1: External taskforce — hands-on, embedded, not advisory.
-"
-    "Angle 2: Industry experts — deep functional knowledge, real operator experience.
-"
-    "Angle 3: NOT a consultancy — direct contrast to typical consulting firms.
-"
-)
+Rules for each option:
+- Exactly 3 options, numbered 1. / 2. / 3.
+- Each references a DIFFERENT active signal (RC, MP, SG or SCD) from the research.
+- Tailor to the function: Procurement reacts to margin pressure; Planning/Supply Chain reacts to disruption.
+- Each paragraph is 50-70 words. Specific, direct and professional.
+- Use plain, everyday language — like one senior colleague talking to another.
+- Reference real, specific evidence: named programmes, numbers, events, or divisions.
+- Show you understand what the situation means for someone in the contact's specific role.
+- Each MUST end with a simple, direct request for a brief meeting.
+- NEVER mention XIMPAX, AI, automation, consulting, consultancy, or consultants.
+- NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, solutions.
+- Write ONLY the 3 numbered options. Nothing else."""
+
+POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts. Generate exactly 3 short options (numbered 1. / 2. / 3.) that Sebastian can use to describe XIMPAX.
+
+Angle 1: External taskforce — hands-on, embedded, not advisory.
+Angle 2: Industry experts — deep functional knowledge, real operator experience.
+Angle 3: NOT a consultancy — direct contrast to typical consulting firms."""
 
 def _closeness_tag(closeness):
     c = str(closeness).lower()
     # Handle numeric values from CSV or slider
     if "cold" in c or "never" in c or c == "1": return "cold"
     if "professional" in c or "once" in c or c == "2": return "professional"
-    return "regular"  # Defaults to regular for '3' or other values
+    return "regular"
 
 def _call_with_retry(client, model, contents, config, retries=2, wait=30):
-    """Retry on 429 rate-limit errors with a configurable wait."""
     for attempt in range(retries + 1):
         try:
             return client.models.generate_content(
@@ -82,22 +61,22 @@ def generate_situation_notes(company, function, active_situations,
     
     sig_lines = "
 ".join(
-        "- " + s["label"] + " (" + s["status"] + ", score " + str(s["score"]) + "/10): " + s["signal"]
+        f"- {s['label']} ({s['status']}, score {s['score']}/10): {s['signal']}"
         for s in active_situations[:3]
     )
     
     prompt = (
-        "Write 3 outreach proposals for Sebastian to:
+        f"Write 3 outreach proposals for Sebastian to:
 "
-        "Contact: " + function + " at " + company + "
+        f"Contact: {function} at {company}
 "
-        "Active company signals (use specific facts):
-" + sig_lines + "
+        f"Active company signals (use specific facts):
+{sig_lines}
 
 "
-        "Tone instruction: " + tone_hint + "
+        f"Tone instruction: {tone_hint}
 "
-        "Each option references a DIFFERENT signal. End each with a meeting request. Plain language."
+        f"Each option references a DIFFERENT signal. End each with a meeting request. Plain language."
     )
     
     try:
@@ -112,17 +91,17 @@ def generate_situation_notes(company, function, active_situations,
         time.sleep(PAUSE)
         if "429" in str(e):
             return "Rate limit reached - please wait 60 seconds and try again."
-        return "[Error: " + str(e) + "]"
+        return f"[Error: {str(e)}]"
 
 def generate_positioning_notes(company, function, gemini_api_key, closeness="") -> str:
     client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
     
     prompt = (
-        "Generate 3 positioning options for XIMPAX for a contact at " + company +
-        " in the " + function + " function.
+        f"Generate 3 positioning options for XIMPAX for a contact at {company} "
+        f"in the {function} function.
 "
-        "Tone: " + tone_hint
+        f"Tone: {tone_hint}"
     )
     
     try:
@@ -137,4 +116,4 @@ def generate_positioning_notes(company, function, gemini_api_key, closeness="") 
         time.sleep(PAUSE)
         if "429" in str(e):
             return "Rate limit reached - please wait 60 seconds and try again."
-        return "[Error: " + str(e) + "]"
+        return f"[Error: {str(e)}]"
