@@ -23,8 +23,7 @@ PROMPT = (
     "SG (Significant Growth): M&A, market expansion, new plant/capacity, major product launches, IPO, scaling\n"
     "SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges, supplier issues\n"
     "\n"
-    "For each signal, write EXACTLY 3 bullet points (each starting with a dash -).\n"
-    "Each bullet must include a named programme, real number, or specific date where available.\n"
+    "For each signal provide 3 distinct evidence points. Each point must be a single sentence containing a named programme, real number, or specific date.\n"
     "If no specific information is found for a signal, state that clearly and score it low.\n"
     "\n"
     "Scoring:\n"
@@ -32,25 +31,13 @@ PROMPT = (
     "- MEDIUM/implied evidence = score 4-6\n"
     "- No evidence = score 0-3\n"
     "\n"
-    "Reply in this EXACT format (no markdown, no bold, no asterisks):\n"
-    "RC: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
-    "- [bullet 1]\n"
-    "- [bullet 2]\n"
-    "- [bullet 3]\n"
-    "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
-    "- [bullet 1]\n"
-    "- [bullet 2]\n"
-    "- [bullet 3]\n"
-    "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
-    "- [bullet 1]\n"
-    "- [bullet 2]\n"
-    "- [bullet 3]\n"
-    "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
-    "- [bullet 1]\n"
-    "- [bullet 2]\n"
-    "- [bullet 3]\n"
+    "Reply in this EXACT format:\n"
+    "RC: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
+    "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
+    "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
+    "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
     "SUMMARY: [1 sentence: the single most critical business situation for this company right now]\n"
-    "SOURCES: [list up to 3 key URLs or source names used]\n"
+    "SOURCES: [list up to 3 key source names or URLs]\n"
     "\n"
     "Company: {company}\n"
     "Industry: {industry_hint}\n"
@@ -63,6 +50,22 @@ def _enforce(score):
     return "UNCLEAR"
 
 
+def _prose_to_bullets(text, n=3):
+    """Split prose into up to n bullet points by sentence boundaries."""
+    # Split on sentence-ending punctuation followed by space or end
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    # Filter out empty or very short fragments
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+    if not sentences:
+        return text
+    # Take up to n sentences, merge remainder into last bucket if more than n
+    if len(sentences) <= n:
+        bullets = sentences
+    else:
+        bullets = sentences[:n-1] + [" ".join(sentences[n-1:])]
+    return "\n".join(f"- {s}" for s in bullets)
+
+
 def parse_result(text):
     # Strip markdown artifacts but preserve newlines
     clean = re.sub(r"[\*\`#~]+", "", text)
@@ -72,21 +75,19 @@ def parse_result(text):
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
         score, signal = 0, ""
-        # Match: CODE: score | STATUS | (then capture everything until next signal/SUMMARY/SOURCES)
         pat = rf"(?mi)^{code}[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
         m = re.search(pat, clean, re.DOTALL)
         if m:
             score = min(int(m.group(1)), 10)
-            # Preserve bullet structure: extract lines starting with -
             raw_signal = m.group(3).strip()
-            bullet_lines = re.findall(r"^\s*-\s*(.+)", raw_signal, re.MULTILINE)
-            if bullet_lines:
-                signal = "\n".join(f"- {b.strip()}" for b in bullet_lines)
+            # Try to find explicit bullet lines first
+            bullet_lines = re.findall(r"^\s*[-•]\s*(.+)", raw_signal, re.MULTILINE)
+            if len(bullet_lines) >= 2:
+                signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
             else:
-                # Fallback: collapse whitespace for prose
-                signal = re.sub(r"\s+", " ", raw_signal).strip()
+                # Model returned prose - split into 3 sentence bullets client-side
+                signal = _prose_to_bullets(raw_signal, n=3)
         else:
-            # Fallback: look for code + score
             fallback = rf"(?i){code}\s*:[^\d]*(\d+)"
             mf = re.search(fallback, clean)
             if mf:
@@ -95,11 +96,11 @@ def parse_result(text):
                 mt = re.search(txt_pat, clean, re.DOTALL)
                 if mt:
                     raw_signal = mt.group(1).strip()
-                    bullet_lines = re.findall(r"^\s*-\s*(.+)", raw_signal, re.MULTILINE)
-                    if bullet_lines:
-                        signal = "\n".join(f"- {b.strip()}" for b in bullet_lines)
+                    bullet_lines = re.findall(r"^\s*[-•]\s*(.+)", raw_signal, re.MULTILINE)
+                    if len(bullet_lines) >= 2:
+                        signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
                     else:
-                        signal = re.sub(r"\s+", " ", raw_signal).strip()
+                        signal = _prose_to_bullets(raw_signal, n=3)
         out[code + "_score"] = score
         out[code + "_status"] = _enforce(score)
         out[code + "_signal"] = signal
