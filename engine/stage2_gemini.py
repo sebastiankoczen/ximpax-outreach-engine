@@ -32,12 +32,6 @@ ROLE_AFFINITY = {
     "indirect": ["MP", "RC", "SG", "SCD"],
 }
 
-CLOSENESS_TONE = {
-    "cold": "The opening must reference a specific named public fact (programme name, number, announcement). Formal but direct. No familiarity.",
-    "professional": "Slightly warmer. Reference shared professional context or a visible company challenge. Brief, collegial.",
-    "regular": "Skip formal introductions entirely. Be direct and personal. Assume they know who Sebastian is.",
-}
-
 SITUATION_NOTES_SYSTEM = """You write situation-specific outreach proposals for Sebastian Koczen. These are 3 alternative options Sebastian can use for a LinkedIn InMail.
 
 STRICT FORMAT — output exactly this structure, nothing else:
@@ -69,13 +63,6 @@ Angle 2: Industry experts — deep functional knowledge, real operator experienc
 Angle 3: NOT a consultancy — direct contrast to typical consulting firms."""
 
 
-def _closeness_tag(closeness):
-    c = str(closeness).lower()
-    if "cold" in c or "never" in c or c == "1": return "cold"
-    if "professional" in c or "once" in c or c == "2": return "professional"
-    return "regular"
-
-
 def _call_with_retry(client, model, contents, config, retries=2, wait=30):
     for attempt in range(retries + 1):
         try:
@@ -87,11 +74,10 @@ def _call_with_retry(client, model, contents, config, retries=2, wait=30):
             raise
 
 
-def generate_situation_notes(company, function, active_situations, gemini_api_key, closeness="") -> str:
+def generate_situation_notes(company, function, active_situations, gemini_api_key) -> str:
     if not active_situations:
         return "No specific signals found - re-run Stage 1 or check research data."
     client = genai.Client(api_key=gemini_api_key)
-    tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
 
     sig_lines = ""
     for s in active_situations[:3]:
@@ -101,8 +87,6 @@ def generate_situation_notes(company, function, active_situations, gemini_api_ke
 
 Active signals from research — cite specific facts directly:
 {sig_lines}
-Tone: {tone_hint}
-
 Format — output ONLY this, no other text:
 1. [50-70 word message opening directly with a named fact, ending with a meeting request]
 
@@ -126,11 +110,9 @@ Do NOT use: "I noticed", "it seems", "I imagine", "I would assume", "presumably"
         return f"[Error: {str(e)}]"
 
 
-def generate_positioning_notes(company, function, gemini_api_key, closeness="") -> str:
+def generate_positioning_notes(company, function, gemini_api_key) -> str:
     client = genai.Client(api_key=gemini_api_key)
-    tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
-    prompt = f"""Generate 3 positioning options for XIMPAX for a contact at {company} in the {function} function.
-Tone: {tone_hint}"""
+    prompt = f"Generate 3 positioning options for XIMPAX for a contact at {company} in the {function} function."
     try:
         resp = _call_with_retry(
             client, MODEL, prompt,
