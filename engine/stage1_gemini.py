@@ -23,7 +23,7 @@ PROMPT = (
     "SG (Significant Growth): M&A, market expansion, new plant/capacity, major product launches, IPO, scaling\n"
     "SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges, supplier issues\n"
     "\n"
-    "For each signal, write EXACTLY 3 bullet points (starting with -).\n"
+    "For each signal, write EXACTLY 3 bullet points (each starting with a dash -).\n"
     "Each bullet must include a named programme, real number, or specific date where available.\n"
     "If no specific information is found for a signal, state that clearly and score it low.\n"
     "\n"
@@ -33,12 +33,24 @@ PROMPT = (
     "- No evidence = score 0-3\n"
     "\n"
     "Reply in this EXACT format (no markdown, no bold, no asterisks):\n"
-    "RC: [score] | [CONFIRMED or LIKELY or UNCLEAR] | - bullet 1\n- bullet 2\n- bullet 3\n"
-    "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] | - bullet 1\n- bullet 2\n- bullet 3\n"
-    "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | - bullet 1\n- bullet 2\n- bullet 3\n"
-    "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | - bullet 1\n- bullet 2\n- bullet 3\n"
+    "RC: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
+    "- [bullet 1]\n"
+    "- [bullet 2]\n"
+    "- [bullet 3]\n"
+    "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
+    "- [bullet 1]\n"
+    "- [bullet 2]\n"
+    "- [bullet 3]\n"
+    "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
+    "- [bullet 1]\n"
+    "- [bullet 2]\n"
+    "- [bullet 3]\n"
+    "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] |\n"
+    "- [bullet 1]\n"
+    "- [bullet 2]\n"
+    "- [bullet 3]\n"
     "SUMMARY: [1 sentence: the single most critical business situation for this company right now]\n"
-    "SOURCES: [mention key known sources]\n"
+    "SOURCES: [list up to 3 key URLs or source names used]\n"
     "\n"
     "Company: {company}\n"
     "Industry: {industry_hint}\n"
@@ -52,21 +64,27 @@ def _enforce(score):
 
 
 def parse_result(text):
-    # Strip markdown artifacts
-    clean = re.sub(r"[\*\`#\_~]+", "", text)
+    # Strip markdown artifacts but preserve newlines
+    clean = re.sub(r"[\*\`#~]+", "", text)
     clean = re.sub(r"<[^>]+>", "", clean)
     clean = clean.strip()
-    clean = re.sub(r"^[ \t]+", "", clean, flags=re.MULTILINE)  # strip leading spaces per line
 
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
         score, signal = 0, ""
-        # Improved regex: more flexible with whitespace and lookahead
-        pat = rf"(?mi)^{code}[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
+        # Match: CODE: score | STATUS | (then capture everything until next signal/SUMMARY/SOURCES)
+        pat = rf"(?mi)^{code}[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
         m = re.search(pat, clean, re.DOTALL)
         if m:
             score = min(int(m.group(1)), 10)
-            signal = re.sub(r"\s+", " ", m.group(3)).strip()
+            # Preserve bullet structure: extract lines starting with -
+            raw_signal = m.group(3).strip()
+            bullet_lines = re.findall(r"^\s*-\s*(.+)", raw_signal, re.MULTILINE)
+            if bullet_lines:
+                signal = "\n".join(f"- {b.strip()}" for b in bullet_lines)
+            else:
+                # Fallback: collapse whitespace for prose
+                signal = re.sub(r"\s+", " ", raw_signal).strip()
         else:
             # Fallback: look for code + score
             fallback = rf"(?i){code}\s*:[^\d]*(\d+)"
@@ -76,13 +94,22 @@ def parse_result(text):
                 txt_pat = rf"(?i){code}\s*:[^|]*?\d+.*?\|?.*?\|?\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
                 mt = re.search(txt_pat, clean, re.DOTALL)
                 if mt:
-                    signal = re.sub(r"\s+", " ", mt.group(1)).strip()
+                    raw_signal = mt.group(1).strip()
+                    bullet_lines = re.findall(r"^\s*-\s*(.+)", raw_signal, re.MULTILINE)
+                    if bullet_lines:
+                        signal = "\n".join(f"- {b.strip()}" for b in bullet_lines)
+                    else:
+                        signal = re.sub(r"\s+", " ", raw_signal).strip()
         out[code + "_score"] = score
         out[code + "_status"] = _enforce(score)
         out[code + "_signal"] = signal
 
     sm = re.search(r"(?i)SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|$)", clean, re.DOTALL)
     out["SUMMARY"] = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
+
+    src = re.search(r"(?i)SOURCES\s*:\s*(.+?)$", clean, re.DOTALL)
+    out["SOURCES"] = src.group(1).strip() if src else ""
+
     out["raw_output"] = text
     return out
 
