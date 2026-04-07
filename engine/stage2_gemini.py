@@ -5,6 +5,33 @@ from google.genai import types
 MODEL = "gemini-2.0-flash"
 PAUSE = 2
 
+ROLE_AFFINITY = {
+    "procurement": ["MP", "RC", "SG", "SCD"],
+    "sourcing": ["MP", "SCD", "RC", "SG"],
+    "category": ["MP", "RC", "SG", "SCD"],
+    "purchasing": ["MP", "RC", "SCD", "SG"],
+    "buyer": ["MP", "SCD", "RC", "SG"],
+    "planning": ["SCD", "SG", "RC", "MP"],
+    "supply": ["SCD", "RC", "SG", "MP"],
+    "logistics": ["SCD", "MP", "RC", "SG"],
+    "operations": ["RC", "SCD", "SG", "MP"],
+    "manufacturing": ["RC", "SCD", "MP", "SG"],
+    "demand": ["SCD", "SG", "MP", "RC"],
+    "inventory": ["SCD", "MP", "RC", "SG"],
+    "s&op": ["SG", "SCD", "RC", "MP"],
+    "network": ["SCD", "SG", "RC", "MP"],
+    "transformation": ["RC", "SG", "SCD", "MP"],
+    "excellence": ["RC", "MP", "SCD", "SG"],
+    "director": ["MP", "RC", "SG", "SCD"],
+    "vp": ["MP", "SG", "RC", "SCD"],
+    "cpo": ["MP", "RC", "SG", "SCD"],
+    "coo": ["RC", "MP", "SCD", "SG"],
+    "head": ["RC", "MP", "SG", "SCD"],
+    "material": ["SCD", "MP", "RC", "SG"],
+    "metal": ["MP", "SCD", "RC", "SG"],
+    "indirect": ["MP", "RC", "SG", "SCD"],
+}
+
 CLOSENESS_TONE = {
     "cold": "The opening must reference a specific named public fact (programme name, number, announcement). Formal but direct. No familiarity.",
     "professional": "Slightly warmer. Reference shared professional context or a visible company challenge. Brief, collegial.",
@@ -35,7 +62,6 @@ Angle 3: NOT a consultancy — direct contrast to typical consulting firms."""
 
 def _closeness_tag(closeness):
     c = str(closeness).lower()
-    # Handle numeric values from CSV or slider
     if "cold" in c or "never" in c or c == "1": return "cold"
     if "professional" in c or "once" in c or c == "2": return "professional"
     return "regular"
@@ -65,19 +91,13 @@ def generate_situation_notes(company, function, active_situations,
         for s in active_situations[:3]
     )
     
-    prompt = (
-        f"Write 3 outreach proposals for Sebastian to:
-"
-        f"Contact: {function} at {company}
-"
-        f"Active company signals (use specific facts):
+    prompt = f"""Write 3 outreach proposals for Sebastian to:
+Contact: {function} at {company}
+Active company signals (use specific facts):
 {sig_lines}
 
-"
-        f"Tone instruction: {tone_hint}
-"
-        f"Each option references a DIFFERENT signal. End each with a meeting request. Plain language."
-    )
+Tone instruction: {tone_hint}
+Each option references a DIFFERENT signal. End each with a meeting request. Plain language."""
     
     try:
         resp = _call_with_retry(
@@ -97,12 +117,8 @@ def generate_positioning_notes(company, function, gemini_api_key, closeness="") 
     client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
     
-    prompt = (
-        f"Generate 3 positioning options for XIMPAX for a contact at {company} "
-        f"in the {function} function.
-"
-        f"Tone: {tone_hint}"
-    )
+    prompt = f"""Generate 3 positioning options for XIMPAX for a contact at {company} in the {function} function.
+Tone: {tone_hint}"""
     
     try:
         resp = _call_with_retry(
