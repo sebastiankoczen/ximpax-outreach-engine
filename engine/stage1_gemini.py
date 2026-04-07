@@ -53,12 +53,13 @@ def parse_result(text):
     clean = re.sub(r"[*`#_~]+", "", text)
     clean = re.sub(r"<[^>]+>", "", clean)
     clean = clean.strip()
+    clean = re.sub(r"^[ \t]+", "", clean, flags=re.MULTILINE)  # strip leading spaces per line
     
     out = {}
     for code in ["RC", "MP", "SG", "SCD"]:
         score, signal = 0, ""
         # Improved regex: more flexible with whitespace and lookahead
-        pat = rf"(?mi)^{code}\s*:[^|]*?(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
+        pat = rf"(?mi)^{code}[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
         
         m = re.search(pat, clean, re.DOTALL)
         if m:
