@@ -38,10 +38,7 @@ CLOSENESS_TONE = {
     "regular": "Skip formal introductions entirely. Be direct and personal. Assume they know who Sebastian is.",
 }
 
-SITUATION_NOTES_SYSTEM = """You write situation-specific outreach proposals for Sebastian Koczen.
-These are 3 alternative options Sebastian can use for a LinkedIn InMail.
-
-Rules for each option:
+SITUATION_NOTES_SYSTEM = """You write situation-specific outreach proposals for Sebastian Koczen. These are 3 alternative options Sebastian can use for a LinkedIn InMail. Rules for each option:
 - Exactly 3 options, numbered 1. / 2. / 3.
 - Each references a DIFFERENT active signal (RC, MP, SG or SCD) from the research.
 - Tailor to the function: Procurement reacts to margin pressure; Planning/Supply Chain reacts to disruption.
@@ -55,7 +52,6 @@ Rules for each option:
 - Write ONLY the 3 numbered options. Nothing else."""
 
 POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts. Generate exactly 3 short options (numbered 1. / 2. / 3.) that Sebastian can use to describe XIMPAX.
-
 Angle 1: External taskforce — hands-on, embedded, not advisory.
 Angle 2: Industry experts — deep functional knowledge, real operator experience.
 Angle 3: NOT a consultancy — direct contrast to typical consulting firms."""
@@ -69,26 +65,23 @@ def _closeness_tag(closeness):
 def _call_with_retry(client, model, contents, config, retries=2, wait=30):
     for attempt in range(retries + 1):
         try:
-            return client.models.generate_content(
-                model=model, contents=contents, config=config)
+            return client.models.generate_content(model=model, contents=contents, config=config)
         except Exception as e:
             if "429" in str(e) and attempt < retries:
                 time.sleep(wait)
                 continue
             raise
 
-def generate_situation_notes(company, function, active_situations,
-                            gemini_api_key, closeness="") -> str:
+def generate_situation_notes(company, function, active_situations, gemini_api_key, closeness="") -> str:
     if not active_situations:
         return "No specific signals found - re-run Stage 1 or check research data."
-    
     client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
     
     sig_lines = ""
     for s in active_situations[:3]:
         sig_lines += f"- {s['label']} ({s['status']}, score {s['score']}/10): {s['signal']}" + chr(10)
-    
+
     prompt = f"""Write 3 outreach proposals for Sebastian to:
 Contact: {function} at {company}
 Active company signals (use specific facts):
@@ -96,13 +89,12 @@ Active company signals (use specific facts):
 
 Tone instruction: {tone_hint}
 Each option references a DIFFERENT signal. End each with a meeting request. Plain language."""
-    
+
     try:
         resp = _call_with_retry(
             client, MODEL, prompt,
-            types.GenerateContentConfig(
-                system_instruction=SITUATION_NOTES_SYSTEM,
-                temperature=0.85))
+            types.GenerateContentConfig(system_instruction=SITUATION_NOTES_SYSTEM, temperature=0.85)
+        )
         time.sleep(PAUSE)
         return resp.text.strip()
     except Exception as e:
@@ -114,16 +106,14 @@ Each option references a DIFFERENT signal. End each with a meeting request. Plai
 def generate_positioning_notes(company, function, gemini_api_key, closeness="") -> str:
     client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
-    
     prompt = f"""Generate 3 positioning options for XIMPAX for a contact at {company} in the {function} function.
 Tone: {tone_hint}"""
-    
+
     try:
         resp = _call_with_retry(
             client, MODEL, prompt,
-            types.GenerateContentConfig(
-                system_instruction=POSITIONING_SYSTEM,
-                temperature=0.85))
+            types.GenerateContentConfig(system_instruction=POSITIONING_SYSTEM, temperature=0.85)
+        )
         time.sleep(PAUSE)
         return resp.text.strip()
     except Exception as e:
