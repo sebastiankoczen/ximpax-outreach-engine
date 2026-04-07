@@ -27,11 +27,12 @@ tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"]
 
 with tab_single:
     st.subheader("Target Contact")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 2, 3])
     with col1:
         target_name = st.text_input("Full Name", placeholder="e.g. A. Smith")
-        target_company = st.text_input("Company Name", placeholder="e.g. Company AG")
     with col2:
+        target_company = st.text_input("Company", placeholder="e.g. Company AG")
+    with col3:
         target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
 
     if st.button("🚀 Generate Analysis", type="primary"):
@@ -68,25 +69,28 @@ with tab_single:
         st.header(f"📊 {res['company']} Situation")
         st.info(research.get("SUMMARY", "No summary available."))
 
-        # Sources — shown inline as clickable links (Title|URL format)
+        # Sources — always visible as clickable links (Title|URL from grounding metadata)
+        def _render_sources(sources_str):
+            links = []
+            for ln in sources_str.strip().splitlines():
+                ln = ln.strip().strip("-").strip()
+                if not ln:
+                    continue
+                if "|" in ln:
+                    title, url = ln.split("|", 1)
+                    title, url = title.strip(), url.strip()
+                    links.append(f"[{title}]({url})" if url.startswith("http") else title)
+                elif ln.startswith("http"):
+                    links.append(f"[{ln}]({ln})")
+                else:
+                    links.append(ln)
+            return links
+
         sources = research.get("SOURCES", "")
         if sources and sources.strip():
-            source_links = []
-            for line in sources.strip().splitlines():
-                line = line.strip().strip("-").strip()
-                if "|" in line:
-                    parts = line.split("|", 1)
-                    title, url = parts[0].strip(), parts[1].strip()
-                    if url.startswith("http"):
-                        source_links.append(f"[{title}]({url})")
-                    else:
-                        source_links.append(title)
-                elif line.startswith("http"):
-                    source_links.append(f"[Link]({line})")
-                elif line:
-                    source_links.append(line)
-            if source_links:
-                st.caption("🔗 **Sources:** " + "  ·  ".join(source_links))
+            links = _render_sources(sources)
+            if links:
+                st.caption("🔗 **Sources:** " + "  ·  ".join(links))
 
         # Signals in order: RC, SCD, MP, SG
         codes = [
