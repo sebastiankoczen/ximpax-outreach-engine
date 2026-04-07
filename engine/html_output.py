@@ -13,6 +13,8 @@ CSS = "\n".join([
     ".name { font-size: 20px; font-weight: 700; color: #000; margin-bottom: 4px; }",
     ".meta { font-size: 14px; color: #0a66c2; font-weight: 600; margin-bottom: 15px; }",
     ".summary-box { background: #f0f7ff; border-left: 4px solid #0a66c2; padding: 15px; margin: 15px 0; font-size: 14px; font-style: italic; }",
+    ".sources-box { background: #f5f5f5; border-left: 3px solid #bbb; padding: 10px 15px; margin: 8px 0 15px; font-size: 12px; color: #666; }",
+    ".sources-box strong { color: #444; }",
     ".signal-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 5px; color: #fff; }",
     ".sig-RC { background: #f5c518; color: #333; }",
     ".sig-MP { background: #d93025; }",
@@ -35,7 +37,6 @@ def _split_numbered(text):
     if not text or not isinstance(text, str):
         return []
     text = text.strip()
-    # Only split on 1-2 digit numbers at line start — prevents splitting on years like 2025
     parts = re.split(r'(?m)(?:^|\n)\s*(?=\d{1,2}\.)', text)
     items = []
     for p in parts:
@@ -53,13 +54,15 @@ def _split_numbered(text):
 
 
 def _signal_bullets_html(signal_text):
-    """Render newline-separated signal sentences as HTML bullet list."""
+    """Render signal sentences as HTML bullet list. Strips leading '- ' prefix."""
     if not signal_text or not isinstance(signal_text, str):
         return ""
-    bullets = [b.strip() for b in signal_text.split("\n") if b.strip()]
-    if not bullets:
+    raw_bullets = [b.strip() for b in signal_text.split("\n") if b.strip()]
+    if not raw_bullets:
         return "<p style='font-size:13px'>" + hl.escape(signal_text.strip()) + "</p>"
-    items = "".join("<li>" + hl.escape(b) + "</li>" for b in bullets)
+    # Stage1 stores bullets with "- " prefix — strip it before wrapping in <li>
+    clean = [b[2:].strip() if b.startswith("- ") else b for b in raw_bullets]
+    items = "".join("<li>" + hl.escape(b) + "</li>" for b in clean)
     return "<ul>" + items + "</ul>"
 
 
@@ -92,6 +95,11 @@ def generate_html(df):
         summary = str(row.get("summary", ""))
         if summary and summary.strip():
             card += "<div class='summary-box'>" + hl.escape(summary) + "</div>"
+
+        # Sources — shown right after summary
+        sources = str(row.get("sources", ""))
+        if sources and sources.strip() and sources.strip().lower() not in ("nan", "none", ""):
+            card += "<div class='sources-box'><strong>&#128279; Sources:</strong> " + hl.escape(sources.strip()) + "</div>"
 
         for code, label, css_class in SIGNAL_ORDER:
             score  = row.get(code + "_score", 0)
