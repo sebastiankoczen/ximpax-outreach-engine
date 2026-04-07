@@ -24,7 +24,7 @@ with st.sidebar:
 - **Cold**: Evidence-heavy, formal.
 - **Professional**: Warm, collegial.
 - **Regular**: Direct, brief, personal.
-    """)
+""")
 
 tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"])
 
@@ -52,7 +52,7 @@ with tab_single:
                 try:
                     # Stage 1: Research
                     research = scan_company(target_company, gemini_key, target_function)
-                    
+
                     # Stage 2: Drafting
                     situations = generate_situation_notes(
                         target_company, target_function, research["active_situations"], gemini_key, closeness
@@ -60,7 +60,7 @@ with tab_single:
                     positioning = generate_positioning_notes(
                         target_company, target_function, gemini_key, closeness
                     )
-                    
+
                     st.session_state["result"] = {
                         "name": target_name,
                         "company": target_company,
@@ -76,14 +76,19 @@ with tab_single:
     if "result" in st.session_state:
         res = st.session_state["result"]
         research = res["research"]
-        
+
         st.divider()
         st.header(f"📊 {res['company']} Situation")
         st.info(research.get("SUMMARY", "No summary available."))
-        
+
+        # Signals in order: RC, SCD, MP, SG with correct colors and full names
+        codes = [
+            ("RC",  "🟡 Resource Constraints"),
+            ("SCD", "🔵 Supply Chain Disruption"),
+            ("MP",  "🔴 Margin Pressure"),
+            ("SG",  "🟢 Significant Growth"),
+        ]
         cols = st.columns(4)
-        codes = [("RC", "🔴 Resource"), ("MP", "🟠 Margin"), ("SG", "🟢 Growth"), ("SCD", "🔵 Supply Chain")]
-        
         for i, (code, label) in enumerate(codes):
             with cols[i]:
                 score = research.get(f"{code}_score", 0)
@@ -91,14 +96,23 @@ with tab_single:
                 signal = research.get(f"{code}_signal", "")
                 st.markdown(f"**{label}**")
                 st.markdown(f"`{status}` ({score}/10)")
-                if signal: st.caption(signal)
-                
+                if signal:
+                    # Render bullet points: signal is space-collapsed, split on " - " pattern
+                    bullets = [b.strip() for b in signal.split("- ") if b.strip()]
+                    if len(bullets) > 1:
+                        for b in bullets:
+                            st.markdown(f"- {b}")
+                    else:
+                        st.caption(signal)
+
         st.divider()
-        st.header("📝 Outreach & Positioning")
-        t1, t2 = st.tabs(["🎯 Tailored Notes", "🏢 XIMPAX Positioning"])
-        with t1: st.write(res["situations"])
-        with t2: st.write(res["positioning"])
-        
+        st.header("📝 Outreach Proposals")
+        st.write(res["situations"])
+
+        st.divider()
+        st.header("🏢 XIMPAX Positioning")
+        st.write(res["positioning"])
+
         # Data for export
         data = {
             "name": [res["name"]],
@@ -118,7 +132,6 @@ with tab_single:
         }
         df = pd.DataFrame(data)
         html_report = generate_html(df)
-        
         st.download_button(
             "🌐 Download Report",
             data=html_report.encode("utf-8"),
@@ -130,19 +143,17 @@ with tab_single:
 with tab_batch:
     st.subheader("Batch Process")
     uploaded_file = st.file_uploader("Upload CSV (name, known_company, known_function, closeness_level)", type="csv")
-    
     if uploaded_file and gemini_key:
         if st.button("▶️ Start Process"):
             df_in = pd.read_csv(uploaded_file)
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
+
             def update_progress(current, total, msg):
                 progress_bar.progress(current / total)
                 status_text.text(msg)
-            
+
             res_df, _ = run_pipeline(df_in, gemini_key, update_progress)
-            
             st.success("Complete!")
             html_batch = generate_html(res_df)
             st.download_button(
