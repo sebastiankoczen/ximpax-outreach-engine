@@ -10,7 +10,6 @@ CSS = "\n".join([
     "th { background: #0a66c2; color: #fff; text-align: left; padding: 12px 15px; font-size: 13px; text-transform: uppercase; }",
     "td { padding: 12px 15px; border-bottom: 1px solid #eee; vertical-align: top; }",
     ".card { background: #fff; padding: 25px; margin-bottom: 25px; border-radius: 8px; border: 1px solid #e0e0e0; }",
-    ".name { font-size: 20px; font-weight: 700; color: #000; margin-bottom: 4px; }",
     ".meta { font-size: 14px; color: #0a66c2; font-weight: 600; margin-bottom: 15px; }",
     ".summary-box { background: #f0f7ff; border-left: 4px solid #0a66c2; padding: 15px; margin: 15px 0; font-size: 14px; font-style: italic; }",
     ".sources-box { background: #f5f5f5; border-left: 3px solid #bbb; padding: 10px 15px; margin: 8px 0 15px; font-size: 12px; color: #666; }",
@@ -59,87 +58,103 @@ def _signal_bullets_html(signal_text):
         return ""
     raw_bullets = [b.strip() for b in signal_text.split("\n") if b.strip()]
     if not raw_bullets:
-        return "<p style='font-size:13px'>" + hl.escape(signal_text.strip()) + "</p>"
-    # Stage1 stores bullets with "- " prefix — strip it before wrapping in <li>
+        return "<p>" + hl.escape(signal_text.strip()) + "</p>"
+    # Stage1 stores bullets with "- " prefix -- strip it before wrapping in <li>
     clean = [b[2:].strip() if b.startswith("- ") else b for b in raw_bullets]
     items = "".join("<li>" + hl.escape(b) + "</li>" for b in clean)
     return "<ul>" + items + "</ul>"
 
 
-def _sources_html(sources_text):
-    """Render Title|URL source lines as clickable <a> tags."""
+def _sources_html(sources):
+    """Render sources (list of dicts or legacy string) as clickable links."""
     links = []
-    for line in sources_text.strip().splitlines():
-        line = line.strip().strip("-").strip()
-        if not line:
-            continue
-        if "|" in line:
-            parts = line.split("|", 1)
-            title, url = parts[0].strip(), parts[1].strip()
-            if url.startswith("http"):
-                links.append("<a href='" + hl.escape(url) + "' target='_blank' rel='noopener'>" + hl.escape(title) + "</a>")
+    if isinstance(sources, list):
+        for s in sources:
+            if isinstance(s, dict):
+                title = s.get("title", "") or s.get("uri", "")
+                uri = s.get("uri", "")
+                if uri:
+                    links.append("<a href='" + hl.escape(uri) + "' target='_blank'>" + hl.escape(title) + "</a>")
+                elif title:
+                    links.append(hl.escape(title))
+    elif isinstance(sources, str) and sources.strip() and sources.strip().lower() not in ("nan", "none", "[]"):
+        for line in sources.strip().splitlines():
+            line = line.strip().strip("-").strip()
+            if not line:
+                continue
+            if "|" in line:
+                title, url = line.split("|", 1)
+                title, url = title.strip(), url.strip()
+                if url.startswith("http"):
+                    links.append("<a href='" + hl.escape(url) + "' target='_blank'>" + hl.escape(title) + "</a>")
+                else:
+                    links.append(hl.escape(title))
+            elif line.startswith("http"):
+                links.append("<a href='" + hl.escape(line) + "' target='_blank'>" + hl.escape(line) + "</a>")
             else:
-                links.append(hl.escape(title))
-        elif line.startswith("http"):
-            links.append("<a href='" + hl.escape(line) + "' target='_blank' rel='noopener'>" + hl.escape(line) + "</a>")
-        else:
-            links.append(hl.escape(line))
+                links.append(hl.escape(line))
     if not links:
         return ""
-    return "<div class='sources-box'><strong>&#128279; Sources:</strong> " + " &nbsp;·&nbsp; ".join(links) + "</div>"
+    return (
+        "<div class='sources-box'><strong>\U0001f517 Sources:</strong> "
+        + "  &middot;  ".join(links)
+        + "</div>"
+    )
 
 
 def generate_html(df):
     SIGNAL_ORDER = [
-        ("RC",  "Resource Constraints",    "sig-RC"),
+        ("RC", "Resource Constraints", "sig-RC"),
         ("SCD", "Supply Chain Disruption", "sig-SCD"),
-        ("MP",  "Margin Pressure",         "sig-MP"),
-        ("SG",  "Significant Growth",      "sig-SG"),
+        ("MP", "Margin Pressure", "sig-MP"),
+        ("SG", "Significant Growth", "sig-SG"),
     ]
-
-    table_header = "<thead><tr><th>Target</th><th>RC</th><th>SCD</th><th>MP</th><th>SG</th></tr></thead>"
+    table_header = "<table><tr><th>Target</th><th>RC</th><th>SCD</th><th>MP</th><th>SG</th></tr>"
     table_rows = []
     rows_html = []
 
     for _, row in df.iterrows():
-        tr = "<tr><td><b>" + hl.escape(str(row.get('name', ''))) + "</b><br><small>" + hl.escape(str(row.get('company', ''))) + "</small></td>"
+        company = hl.escape(str(row.get('company', '')))
+        function_ = hl.escape(str(row.get('known_function', '')))
+
+        tr = "<tr><td>" + company + "<br><small>" + function_ + "</small></td>"
         for code, label, css_class in SIGNAL_ORDER:
             val = str(row.get(code + "_score", ""))
             if val != "":
                 val = code + ": " + val + "/10"
-            tr += "<td><div style='font-size:11px'>" + hl.escape(val) + "</div></td>"
+            tr += "<td>" + hl.escape(val) + "</td>"
         tr += "</tr>"
         table_rows.append(tr)
 
         card = "<div class='card'>"
-        card += "<div class='name'>" + hl.escape(str(row.get('name', ''))) + "</div>"
-        card += "<div class='meta'>" + hl.escape(str(row.get('known_function', ''))) + " @ " + hl.escape(str(row.get('company', ''))) + "</div>"
+        card += "<div class='meta'>" + function_ + " @ " + company + "</div>"
 
         summary = str(row.get("summary", ""))
-        if summary and summary.strip():
+        if summary and summary.strip() and summary.strip().lower() not in ("nan", "none"):
             card += "<div class='summary-box'>" + hl.escape(summary) + "</div>"
 
-        # Sources — rendered as clickable links (Title|URL format from stage1)
-        sources = str(row.get("sources", ""))
-        if sources and sources.strip() and sources.strip().lower() not in ("nan", "none", ""):
-            card += _sources_html(sources)
+        # Sources -- handles list of dicts (from grounding) or legacy string
+        sources = row.get("sources", [])
+        src_html = _sources_html(sources)
+        if src_html:
+            card += src_html
 
         for code, label, css_class in SIGNAL_ORDER:
-            score  = row.get(code + "_score", 0)
+            score = row.get(code + "_score", 0)
             status = str(row.get(code + "_status", "UNCLEAR"))
             signal = str(row.get(code + "_signal", ""))
-            if not signal or not signal.strip():
+            if not signal or not signal.strip() or signal.strip().lower() in ("nan", "none"):
                 continue
             card += "<div class='sig-block'>"
             card += "<span class='signal-tag " + css_class + "'>" + code + "</span>"
-            card += "<b style='font-size:13px'>" + hl.escape(label) + "</b>"
+            card += "<strong>" + hl.escape(label) + "</strong>"
             card += "<span class='sig-status'>" + hl.escape(status) + " (" + str(score) + "/10)</span>"
             card += _signal_bullets_html(signal)
             card += "</div>"
 
         situations = str(row.get("situation_notes", ""))
-        if situations.strip():
-            card += "<h3 style='margin:20px 0 8px'>&#128221; Outreach Proposals</h3>"
+        if situations.strip() and situations.strip().lower() not in ("nan", "none"):
+            card += "<h3>\U0001f4dd Outreach Proposals</h3>"
             opts = _split_numbered(situations)
             if opts:
                 for num, body in opts:
@@ -149,8 +164,8 @@ def generate_html(df):
                 card += "<div class='option-block'>" + hl.escape(situations) + "</div>"
 
         positioning = str(row.get("positioning_notes", ""))
-        if positioning.strip():
-            card += "<h3 style='margin:20px 0 8px'>&#127970; XIMPAX Positioning</h3>"
+        if positioning.strip() and positioning.strip().lower() not in ("nan", "none"):
+            card += "<h3>\U0001f3e2 XIMPAX Positioning</h3>"
             card += "<div class='positioning'>"
             pos_opts = _split_numbered(positioning)
             if pos_opts:
@@ -164,15 +179,14 @@ def generate_html(df):
         rows_html.append(card)
 
     return (
-        "<!DOCTYPE html>\n<html lang='en'>\n<head>\n"
-        "<meta charset='UTF-8'>\n"
-        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n"
+        "<!DOCTYPE html>\n<html>\n<head>\n"
+        "<meta charset='utf-8'>\n"
         "<title>XIMPAX Outreach Report</title>\n"
         "<style>" + CSS + "</style>\n"
         "</head>\n<body>\n"
-        "<h1>&#9889; XIMPAX Outreach Report</h1>\n"
+        "<h1>\u26a1 XIMPAX Outreach Report</h1>\n"
         "<p class='sub'>Generated by XIMPAX Outreach Engine</p>\n"
-        "<table>" + table_header + "<tbody>" + "".join(table_rows) + "</tbody></table>\n"
-        + "".join(rows_html) +
-        "\n</body>\n</html>"
+        + table_header + "".join(table_rows) + "</table>\n"
+        + "".join(rows_html)
+        + "\n</body>\n</html>"
     )
