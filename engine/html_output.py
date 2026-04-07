@@ -66,6 +66,29 @@ def _signal_bullets_html(signal_text):
     return "<ul>" + items + "</ul>"
 
 
+def _sources_html(sources_text):
+    """Render Title|URL source lines as clickable <a> tags."""
+    links = []
+    for line in sources_text.strip().splitlines():
+        line = line.strip().strip("-").strip()
+        if not line:
+            continue
+        if "|" in line:
+            parts = line.split("|", 1)
+            title, url = parts[0].strip(), parts[1].strip()
+            if url.startswith("http"):
+                links.append("<a href='" + hl.escape(url) + "' target='_blank' rel='noopener'>" + hl.escape(title) + "</a>")
+            else:
+                links.append(hl.escape(title))
+        elif line.startswith("http"):
+            links.append("<a href='" + hl.escape(line) + "' target='_blank' rel='noopener'>" + hl.escape(line) + "</a>")
+        else:
+            links.append(hl.escape(line))
+    if not links:
+        return ""
+    return "<div class='sources-box'><strong>&#128279; Sources:</strong> " + " &nbsp;·&nbsp; ".join(links) + "</div>"
+
+
 def generate_html(df):
     SIGNAL_ORDER = [
         ("RC",  "Resource Constraints",    "sig-RC"),
@@ -96,10 +119,10 @@ def generate_html(df):
         if summary and summary.strip():
             card += "<div class='summary-box'>" + hl.escape(summary) + "</div>"
 
-        # Sources — shown right after summary
+        # Sources — rendered as clickable links (Title|URL format from stage1)
         sources = str(row.get("sources", ""))
         if sources and sources.strip() and sources.strip().lower() not in ("nan", "none", ""):
-            card += "<div class='sources-box'><strong>&#128279; Sources:</strong> " + hl.escape(sources.strip()) + "</div>"
+            card += _sources_html(sources)
 
         for code, label, css_class in SIGNAL_ORDER:
             score  = row.get(code + "_score", 0)
