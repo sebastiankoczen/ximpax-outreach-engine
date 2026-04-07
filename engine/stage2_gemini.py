@@ -85,11 +85,9 @@ def generate_situation_notes(company, function, active_situations,
     client = genai.Client(api_key=gemini_api_key)
     tone_hint = CLOSENESS_TONE.get(_closeness_tag(closeness), CLOSENESS_TONE["cold"])
     
-    sig_lines = "
-".join(
-        f"- {s['label']} ({s['status']}, score {s['score']}/10): {s['signal']}"
-        for s in active_situations[:3]
-    )
+    sig_lines = ""
+    for s in active_situations[:3]:
+        sig_lines += f"- {s['label']} ({s['status']}, score {s['score']}/10): {s['signal']}" + chr(10)
     
     prompt = f"""Write 3 outreach proposals for Sebastian to:
 Contact: {function} at {company}
