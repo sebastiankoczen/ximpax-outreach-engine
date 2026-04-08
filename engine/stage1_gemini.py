@@ -50,7 +50,6 @@ def _enforce(score):
 
 
 def _prose_to_bullets(text, n=3):
-    """Split prose into up to n bullet points by sentence boundaries."""
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
     if not sentences:
@@ -63,7 +62,6 @@ def _prose_to_bullets(text, n=3):
 
 
 def _extract_grounding_sources(resp):
-    """Extract source titles and URIs from Gemini grounding metadata."""
     sources = []
     try:
         candidates = resp.candidates or []
@@ -83,7 +81,6 @@ def _extract_grounding_sources(resp):
                         sources.append({"title": uri, "uri": uri})
     except Exception:
         pass
-    # Deduplicate by URI
     seen = set()
     unique = []
     for s in sources:
