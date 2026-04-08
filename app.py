@@ -9,11 +9,9 @@ from engine.pipeline import run_pipeline
 st.set_page_config(page_title="XIMPAX Outreach Engine", page_icon="⚡", layout="wide")
 st.title("⚡ XIMPAX Outreach Engine")
 st.caption("Research a company and generate tailored outreach proposals for a specific contact.")
-# v2
 
 
 def _strip_preamble(text):
-    """Remove any introductory sentence before the first numbered option."""
     if not text:
         return text
     m = re.search(r"(1\.\s+.+)", text, re.DOTALL)
@@ -21,7 +19,6 @@ def _strip_preamble(text):
 
 
 def _render_sources(sources):
-    """Render sources (list of dicts or string) as markdown links."""
     links = []
     if isinstance(sources, list):
         for s in sources:
@@ -46,6 +43,7 @@ def _render_sources(sources):
             else:
                 links.append(ln)
     return links
+
 
 with st.sidebar:
     st.header("🔍 Settings")
@@ -95,13 +93,11 @@ if "result" in st.session_state:
     st.header(f"📊 {res['company']} Situation")
     st.info(research.get("SUMMARY", "No summary available."))
 
-    # Sources — clickable links from grounding metadata
     sources = research.get("SOURCES", [])
     links = _render_sources(sources)
     if links:
         st.caption("🔗 **Sources:** " + " · ".join(links))
 
-    # Signals in order: RC, SCD, MP, SG
     codes = [
         ("RC", "🟡 Resource Constraints"),
         ("SCD", "🔵 Supply Chain Disruption"),
@@ -127,7 +123,6 @@ if "result" in st.session_state:
     st.header("🏢 XIMPAX Positioning")
     st.write(res["positioning"])
 
-    # Data for export
     data = {
         "known_function": [res["function"]],
         "company": [res["company"]],
