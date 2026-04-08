@@ -77,11 +77,17 @@ def _extract_grounding_sources(resp):
                 if web:
                     title = getattr(web, "title", "") or ""
                     uri = getattr(web, "uri", "") or ""
-                    date = ""
+                                        date = ""
                     if uri:
+                        # Try full date: 2025/03/15 or 2025-03-15
                         date_match = re.search(r"(\d{4})[/\-](\d{2})[/\-](\d{2})", uri)
                         if date_match:
-                            date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+                            date = f"{date_match.group(3)}.{date_match.group(2)}.{date_match.group(1)}"
+                        else:
+                            # Try year/month only: 2025/03
+                            ym_match = re.search(r"[/\-](\d{4})[/\-](\d{2})[/\-]", uri)
+                            if ym_match:
+                                date = f"{ym_match.group(2)}.{ym_match.group(1)}"
                     if uri and title:
                         sources.append({"title": title, "uri": uri, "date": date})
                     elif uri:
