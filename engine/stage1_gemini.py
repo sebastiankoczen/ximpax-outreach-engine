@@ -50,6 +50,7 @@ def _enforce(score):
 
 
 def _prose_to_bullets(text, n=3):
+    """Split prose into up to n bullet points by sentence boundaries."""
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
     if not sentences:
@@ -62,6 +63,7 @@ def _prose_to_bullets(text, n=3):
 
 
 def _extract_grounding_sources(resp):
+    """Extract source titles and URIs from Gemini grounding metadata."""
     sources = []
     try:
         candidates = resp.candidates or []
@@ -81,6 +83,7 @@ def _extract_grounding_sources(resp):
                         sources.append({"title": uri, "uri": uri})
     except Exception:
         pass
+    # Deduplicate by URI
     seen = set()
     unique = []
     for s in sources:
@@ -128,7 +131,7 @@ def parse_result(text):
 
     sm = re.search(r"(?i)SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|$)", clean, re.DOTALL)
     out["SUMMARY"] = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
-    out["SOURCES"] = []
+    out["SOURCES"] = []  # Will be populated from grounding metadata
     out["raw_output"] = text
     return out
 
@@ -173,18 +176,8 @@ def scan_company(company, api_key, industry_hint=""):
                 temperature=0.1,
             )
         )
-        full_text = ""
-        try:
-            for candidate in (resp.candidates or []):
-                for part in (getattr(candidate.content, "parts", None) or []):
-                    t = getattr(part, "text", None)
-                    if t:
-                        full_text += t + "\n"
-        except Exception:
-            pass
-        if not full_text:
-            full_text = resp.text or ""
-        parsed = parse_result(full_text)
+        parsed = parse_result(resp.text)
+        # Extract all sources from grounding metadata
         parsed["SOURCES"] = _extract_grounding_sources(resp)
     except Exception as e:
         parsed = parse_result("")
