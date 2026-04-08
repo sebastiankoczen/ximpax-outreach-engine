@@ -17,7 +17,7 @@ PROMPT = (
     "You are a strategic business analyst. "
     "Search the web for the most recent developments regarding \"{company}\". "
     "\n\n"
-    "Identify specific evidence from the last 18 months for these 4 signals:\n"
+    "Identify specific evidence from the last 12 months for these 4 signals:\n"
     "RC (Resource Constraints): staffing shortages, hiring freezes, restructuring, layoffs, capability gaps\n"
     "MP (Margin Pressure): cost reduction programmes, profitability challenges, price pressure, margin warnings\n"
     "SG (Significant Growth): M&A, market expansion, new plant/capacity, major product launches, IPO, scaling\n"
