@@ -97,7 +97,7 @@ if "result" in st.session_state:
     st.divider()
     st.header(f"📊 {res['company']} Situation")
     with st.expander("🔍 Debug: Raw Gemini Output"):
-    st.text(research.get("raw_output", "No raw output captured."))
+        st.text(research.get("raw_output", "No raw output captured."))
 
     # Sources — clickable links from grounding metadata
     sources = research.get("SOURCES", [])
