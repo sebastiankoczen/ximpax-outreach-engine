@@ -90,16 +90,18 @@ def _extract_grounding_sources(resp):
                         sources.append({"title": title, "uri": uri, "date": date})
                     elif uri:
                         sources.append({"title": uri, "uri": uri, "date": date})
+
+        # Deduplicate by URI — INSIDE the try block now
+        seen = set()
+        unique = []
+        for s in sources:
+            if s.get("uri", "") not in seen:
+                seen.add(s.get("uri", ""))
+                unique.append(s)
+        return unique
+
     except Exception:
-        pass
-    # Deduplicate by URI
-    seen = set()
-    unique = []
-    for s in sources:
-        if s["uri"] not in seen:
-            seen.add(s["uri"])
-            unique.append(s)
-    return unique
+        return []
 
 def parse_result(text):
     clean = re.sub(r"[\*\`#~]+", "", text)
