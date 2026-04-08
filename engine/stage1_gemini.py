@@ -116,7 +116,6 @@ def _extract_grounding_sources(resp):
 def parse_result(text):
     clean = re.sub(r"```[a-z]*", "", text)
     clean = re.sub(r"[\*\`#~]+", "", clean)
-    clean = re.sub(r"<[^>]+>", "", clean)
     clean = clean.strip()
 
     out = {}
