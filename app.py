@@ -66,7 +66,7 @@ with tab_single:
         target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
 
     if st.button("🚀 Generate Analysis", type="primary"):
-    if not target_company:
+        if not target_company:
             st.warning("Company is required.")
         else:
             with st.spinner(f"Analyzing {target_company}..."):
