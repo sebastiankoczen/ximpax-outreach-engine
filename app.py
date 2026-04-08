@@ -93,6 +93,7 @@ if "result" in st.session_state:
 
     st.divider()
     st.header(f"📊 {res['company']} Situation")
+    st.info(research.get("SUMMARY", "No summary available."))
 
     # Sources — clickable links from grounding metadata
     sources = research.get("SOURCES", [])
