@@ -29,7 +29,7 @@ def _render_sources(sources):
                 title = s.get("title", "") or s.get("uri", "")
                 uri = s.get("uri", "")
                 date = s.get("date", "")
-                label = f"{date} — {title}" if date else title
+                label = f"📅 {date} · {title}" if date else f"📅 ? · {title}"
                 if uri:
                     links.append(f"[{label}]({uri})")
                 elif label:
