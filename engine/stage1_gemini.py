@@ -176,7 +176,18 @@ def scan_company(company, api_key, industry_hint=""):
                 temperature=0.1,
             )
         )
-        parsed = parse_result(resp.text)
+        full_text = ""
+        try:
+            for candidate in (resp.candidates or []):
+                for part in (getattr(candidate.content, "parts", None) or []):
+                    t = getattr(part, "text", None)
+                    if t:
+                        full_text += t + "\n"
+        except Exception:
+            pass
+        if not full_text:
+            full_text = resp.text or ""
+        parsed = parse_result(full_text)
         parsed["SOURCES"] = _extract_grounding_sources(resp)
     except Exception as e:
         parsed = parse_result("")
