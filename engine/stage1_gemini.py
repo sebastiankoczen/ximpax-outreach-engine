@@ -91,9 +91,7 @@ def _extract_grounding_sources(resp):
             seen.add(s["uri"])
             unique.append(s)
     return unique
-    
-    except Exception:
-        return []
+
 
 def parse_result(text):
     clean = re.sub(r"[\*\`#~]+", "", text)
@@ -133,7 +131,7 @@ def parse_result(text):
 
     sm = re.search(r"(?i)SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|$)", clean, re.DOTALL)
     out["SUMMARY"] = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
-    out["SOURCES"] = []  # Will be populated from grounding metadata
+    out["SOURCES"] = []
     out["raw_output"] = text
     return out
 
@@ -163,6 +161,7 @@ def _call_with_retry(client, model, contents, config, retries=2, wait=30):
                 continue
             raise
 
+
 def scan_company(company, api_key, industry_hint=""):
     client = genai.Client(api_key=api_key)
     prompt = PROMPT.format(
@@ -177,9 +176,7 @@ def scan_company(company, api_key, industry_hint=""):
                 temperature=0.1,
             )
         )
-        raw_text = _get_full_response_text(resp)
         parsed = parse_result(resp.text)
-        # Extract all sources from grounding metadata
         parsed["SOURCES"] = _extract_grounding_sources(resp)
     except Exception as e:
         parsed = parse_result("")
