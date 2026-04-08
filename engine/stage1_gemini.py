@@ -77,29 +77,21 @@ def _extract_grounding_sources(resp):
                 if web:
                     title = getattr(web, "title", "") or ""
                     uri = getattr(web, "uri", "") or ""
-                    date = ""
-                    if uri:
-                        date_match = re.search(r"(\d{4})[/\-](\d{2})[/\-](\d{2})", uri)
-                        if date_match:
-                            date = f"{date_match.group(3)}.{date_match.group(2)}.{date_match.group(1)}"
-                        else:
-                            ym_match = re.search(r"[/\-](\d{4})[/\-](\d{2})[/\-]", uri)
-                            if ym_match:
-                                date = f"{ym_match.group(2)}.{ym_match.group(1)}"
                     if uri and title:
-                        sources.append({"title": title, "uri": uri, "date": date})
+                        sources.append({"title": title, "uri": uri})
                     elif uri:
-                        sources.append({"title": uri, "uri": uri, "date": date})
-
-        # Deduplicate by URI — INSIDE the try block now
-        seen = set()
-        unique = []
-        for s in sources:
-            if s.get("uri", "") not in seen:
-                seen.add(s.get("uri", ""))
-                unique.append(s)
-        return unique
-
+                        sources.append({"title": uri, "uri": uri})
+    except Exception:
+        pass
+    # Deduplicate by URI
+    seen = set()
+    unique = []
+    for s in sources:
+        if s["uri"] not in seen:
+            seen.add(s["uri"])
+            unique.append(s)
+    return unique
+    
     except Exception:
         return []
 
@@ -171,23 +163,6 @@ def _call_with_retry(client, model, contents, config, retries=2, wait=30):
                 continue
             raise
 
-def _get_full_response_text(resp):
-    """Collect all text parts from all candidates and join them."""
-    texts = []
-    try:
-        for candidate in (resp.candidates or []):
-            for part in (getattr(candidate.content, "parts", None) or []):
-                t = getattr(part, "text", None)
-                if t:
-                    texts.append(t)
-    except Exception:
-        pass
-    if texts:
-        return "\n".join(texts)
-    try:
-        return resp.text or ""
-    except Exception:
-        return ""
 def scan_company(company, api_key, industry_hint=""):
     client = genai.Client(api_key=api_key)
     prompt = PROMPT.format(
@@ -203,7 +178,7 @@ def scan_company(company, api_key, industry_hint=""):
             )
         )
         raw_text = _get_full_response_text(resp)
-        parsed = parse_result(raw_text)
+        parsed = parse_result(resp.text)
         # Extract all sources from grounding metadata
         parsed["SOURCES"] = _extract_grounding_sources(resp)
     except Exception as e:
