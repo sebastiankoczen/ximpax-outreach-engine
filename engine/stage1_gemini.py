@@ -39,7 +39,9 @@ PROMPT = (
     "SUMMARY: [1 sentence: the single most critical business situation for this company right now]\n"
     "\n"
     "Company: {company}\n"
-    "Industry: {industry_hint}\n"
+        "Industry: {industry_hint}\n"
+    "\n"
+    "IMPORTANT: Do NOT use markdown, code blocks, backticks, or any formatting. Plain text only.\n"
 )
 
 
