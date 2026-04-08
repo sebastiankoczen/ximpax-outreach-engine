@@ -77,10 +77,15 @@ def _extract_grounding_sources(resp):
                 if web:
                     title = getattr(web, "title", "") or ""
                     uri = getattr(web, "uri", "") or ""
+                    date = ""
+                    if uri:
+                        date_match = re.search(r"(\d{4})[/\-](\d{2})[/\-](\d{2})", uri)
+                        if date_match:
+                            date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
                     if uri and title:
-                        sources.append({"title": title, "uri": uri})
+                        sources.append({"title": title, "uri": uri, "date": date})
                     elif uri:
-                        sources.append({"title": uri, "uri": uri})
+                        sources.append({"title": uri, "uri": uri, "date": date})
     except Exception:
         pass
     # Deduplicate by URI
