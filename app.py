@@ -28,10 +28,12 @@ def _render_sources(sources):
             if isinstance(s, dict):
                 title = s.get("title", "") or s.get("uri", "")
                 uri = s.get("uri", "")
+                date = s.get("date", "")
+                label = f"{date} — {title}" if date else title
                 if uri:
-                    links.append(f"[{title}]({uri})")
-                elif title:
-                    links.append(title)
+                    links.append(f"[{label}]({uri})")
+                elif label:
+                    links.append(label)
     elif isinstance(sources, str) and sources.strip():
         for ln in sources.strip().splitlines():
             ln = ln.strip().strip("-").strip()
@@ -50,8 +52,9 @@ def _render_sources(sources):
 
 with st.sidebar:
     st.header("🔍 Settings")
-    gemini_key = st.text_input("Gemini API Key", type="password", value=st.secrets.get("GEMINI_API_KEY", ""))
+    st.success("✅ API configured.")
 
+gemini_key = st.secrets["GEMINI_API_KEY"]
 tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"])
 
 with tab_single:
@@ -63,9 +66,7 @@ with tab_single:
         target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
 
     if st.button("🚀 Generate Analysis", type="primary"):
-        if not gemini_key:
-            st.error("Please enter your Gemini API Key.")
-        elif not target_company:
+    if not target_company:
             st.warning("Company is required.")
         else:
             with st.spinner(f"Analyzing {target_company}..."):
@@ -161,7 +162,7 @@ if "result" in st.session_state:
 with tab_batch:
     st.subheader("Batch Process")
     uploaded_file = st.file_uploader("Upload CSV (known_company, known_function, closeness_level)", type="csv")
-    if uploaded_file and gemini_key:
+    if uploaded_file:
         if st.button("▶️ Start Process"):
             df_in = pd.read_csv(uploaded_file)
             progress_bar = st.progress(0)
