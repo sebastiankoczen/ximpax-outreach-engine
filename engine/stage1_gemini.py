@@ -186,7 +186,14 @@ def scan_company(company, api_key, industry_hint=""):
                 temperature=0.1,
             )
         )
-        parsed = parse_result(resp.text)
+        raw_text = resp.text if resp.text else ""
+        if not raw_text:
+            # Try extracting text from candidates directly
+            try:
+                raw_text = resp.candidates[0].content.parts[0].text or ""
+            except Exception:
+                raw_text = ""
+        parsed = parse_result(raw_text)
         # Extract all sources from grounding metadata
         parsed["SOURCES"] = _extract_grounding_sources(resp)
     except Exception as e:
