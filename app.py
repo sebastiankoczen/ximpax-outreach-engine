@@ -72,6 +72,8 @@ with tab_single:
             with st.spinner(f"Analyzing {target_company}..."):
                 try:
                     research = scan_company(target_company, gemini_key, target_function)
+                    if research.get("error"):
+                        st.warning(f"⚠️ Research warning: {research['error']}")
                     situations = generate_situation_notes(
                         target_company, target_function, research["active_situations"], gemini_key
                     )
