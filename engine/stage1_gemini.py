@@ -1,190 +1,178 @@
 import re
-import time
-from google import genai
-from google.genai import types
+import streamlit as st
+import pandas as pd
+from engine.stage1_gemini import scan_company
+from engine.stage2_gemini import generate_situation_notes, generate_positioning_notes
+from engine.html_output import generate_html
+from engine.pipeline import run_pipeline
 
-MODEL = "gemini-2.0-flash"
-PAUSE = 8
-
-LABELS = {
-    "RC": "Resource Constraints",
-    "MP": "Margin Pressure",
-    "SG": "Significant Growth",
-    "SCD": "Supply Chain Disruption",
-}
-
-PROMPT = (
-    "You are a strategic business analyst. "
-    "Search the web for the most recent developments regarding \"{company}\". "
-    "\n\n"
-    "Identify specific evidence from the last 12 months for these 4 signals:\n"
-    "RC (Resource Constraints): staffing shortages, hiring freezes, restructuring, layoffs, capability gaps\n"
-    "MP (Margin Pressure): cost reduction programmes, profitability challenges, price pressure, margin warnings\n"
-    "SG (Significant Growth): M&A, market expansion, new plant/capacity, major product launches, IPO, scaling\n"
-    "SCD (Supply Chain Disruption): supply disruptions, nearshoring, logistics challenges, supplier issues\n"
-    "\n"
-    "For each signal provide 3 distinct evidence points. Each point must be a single sentence containing a named programme, real number, or specific date.\n"
-    "If no specific information is found for a signal, state that clearly and score it low.\n"
-    "\n"
-    "Scoring:\n"
-    "- STRONG evidence (named programme, specific number, known announcement) = score 7-10\n"
-    "- MEDIUM/implied evidence = score 4-6\n"
-    "- No evidence = score 0-3\n"
-    "\n"
-    "Reply in this EXACT format:\n"
-    "RC: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
-    "MP: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
-    "SG: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
-    "SCD: [score] | [CONFIRMED or LIKELY or UNCLEAR] | [sentence 1]. [sentence 2]. [sentence 3].\n"
-    "SUMMARY: [1 sentence: the single most critical business situation for this company right now]\n"
-    "\n"
-    "Company: {company}\n"
-    "Industry: {industry_hint}\n"
-)
+st.set_page_config(page_title="XIMPAX Outreach Engine", page_icon="⚡", layout="wide")
+st.title("⚡ XIMPAX Outreach Engine")
+st.caption("Research a company and generate tailored outreach proposals for a specific contact.")
 
 
-def _enforce(score):
-    if score >= 7: return "CONFIRMED"
-    if score >= 4: return "LIKELY"
-    return "UNCLEAR"
-
-
-def _prose_to_bullets(text, n=3):
-    """Split prose into up to n bullet points by sentence boundaries."""
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
-    if not sentences:
+def _strip_preamble(text):
+    if not text:
         return text
-    if len(sentences) <= n:
-        bullets = sentences
-    else:
-        bullets = sentences[:n-1] + [" ".join(sentences[n-1:])]
-    return "\n".join(f"- {s}" for s in bullets)
+    m = re.search(r"(1\.\s+.+)", text, re.DOTALL)
+    return m.group(1).strip() if m else text.strip()
 
 
-def _extract_grounding_sources(resp):
-    """Extract source titles and URIs from Gemini grounding metadata."""
-    sources = []
-    try:
-        candidates = resp.candidates or []
-        for candidate in candidates:
-            gm = getattr(candidate, "grounding_metadata", None)
-            if not gm:
+def _render_sources(sources):
+    links = []
+    if isinstance(sources, list):
+        for s in sources:
+            if isinstance(s, dict):
+                title = s.get("title", "") or s.get("uri", "")
+                uri = s.get("uri", "")
+                if uri:
+                    links.append(f"[{title}]({uri})")
+                elif title:
+                    links.append(title)
+    elif isinstance(sources, str) and sources.strip():
+        for ln in sources.strip().splitlines():
+            ln = ln.strip().strip("-").strip()
+            if not ln:
                 continue
-            chunks = getattr(gm, "grounding_chunks", []) or []
-            for chunk in chunks:
-                web = getattr(chunk, "web", None)
-                if web:
-                    title = getattr(web, "title", "") or ""
-                    uri = getattr(web, "uri", "") or ""
-                    if uri and title:
-                        sources.append({"title": title, "uri": uri})
-                    elif uri:
-                        sources.append({"title": uri, "uri": uri})
-    except Exception:
-        pass
-    # Deduplicate by URI
-    seen = set()
-    unique = []
-    for s in sources:
-        if s["uri"] not in seen:
-            seen.add(s["uri"])
-            unique.append(s)
-    return unique
-
-
-def parse_result(text):
-    clean = re.sub(r"[\*\`#~]+", "", text)
-    clean = re.sub(r"<[^>]+>", "", clean)
-    clean = clean.strip()
-
-    out = {}
-    for code in ["RC", "MP", "SG", "SCD"]:
-        score, signal = 0, ""
-        pat = rf"(?mi)^{code}[^|\n:]*:\s*(\d+)\s*\|\s*(CONFIRMED|LIKELY|UNCLEAR)\s*\|(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
-        m = re.search(pat, clean, re.DOTALL)
-        if m:
-            score = min(int(m.group(1)), 10)
-            raw_signal = m.group(3).strip()
-            bullet_lines = re.findall(r"^\s*[-\u2022]\s*(.+)", raw_signal, re.MULTILINE)
-            if len(bullet_lines) >= 2:
-                signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
+            if "|" in ln:
+                title, url = ln.split("|", 1)
+                title, url = title.strip(), url.strip()
+                links.append(f"[{title}]({url})" if url.startswith("http") else title)
+            elif ln.startswith("http"):
+                links.append(f"[{ln}]({ln})")
             else:
-                signal = _prose_to_bullets(raw_signal, n=3)
+                links.append(ln)
+    return links
+
+
+with st.sidebar:
+    st.header("🔍 Settings")
+    st.success("✅ API configured.")
+
+gemini_key = st.secrets["GEMINI_API_KEY"]
+tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"])
+
+with tab_single:
+    st.subheader("Target Contact")
+    col1, col2 = st.columns([2, 3])
+    with col1:
+        target_company = st.text_input("Company", placeholder="e.g. Company AG")
+    with col2:
+        target_function = st.text_input("Function / Job Title", placeholder="e.g. Head of Procurement")
+
+    if st.button("🚀 Generate Analysis", type="primary"):
+        if not target_company:
+            st.warning("Company is required.")
         else:
-            fallback = rf"(?i){code}\s*:[^\d]*(\d+)"
-            mf = re.search(fallback, clean)
-            if mf:
-                score = min(int(mf.group(1)), 10)
-                txt_pat = rf"(?i){code}\s*:[^|]*?\d+.*?\|?.*?\|?\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
-                mt = re.search(txt_pat, clean, re.DOTALL)
-                if mt:
-                    raw_signal = mt.group(1).strip()
-                    bullet_lines = re.findall(r"^\s*[-\u2022]\s*(.+)", raw_signal, re.MULTILINE)
-                    if len(bullet_lines) >= 2:
-                        signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
-                    else:
-                        signal = _prose_to_bullets(raw_signal, n=3)
-        out[code + "_score"] = score
-        out[code + "_status"] = _enforce(score)
-        out[code + "_signal"] = signal
+            with st.spinner(f"Analyzing {target_company}..."):
+                try:
+                    research = scan_company(target_company, gemini_key, target_function)
+                    if research.get("error"):
+                        st.warning(f"⚠️ Research warning: {research['error']}")
+                    situations = generate_situation_notes(
+                        target_company, target_function, research["active_situations"], gemini_key
+                    )
+                    positioning = generate_positioning_notes(
+                        target_company, target_function, gemini_key
+                    )
+                    st.session_state["result"] = {
+                        "company": target_company,
+                        "function": target_function,
+                        "research": research,
+                        "situations": _strip_preamble(situations),
+                        "positioning": _strip_preamble(positioning),
+                    }
+                except Exception as e:
+                    st.error(f"Generation error: {e}")
 
-    sm = re.search(r"(?i)SUMMARY\s*:\s*(.+?)(?=SOURCES\s*:|$)", clean, re.DOTALL)
-    out["SUMMARY"] = re.sub(r"\s+", " ", sm.group(1)).strip() if sm else ""
-    out["SOURCES"] = []  # Will be populated from grounding metadata
-    out["raw_output"] = text
-    return out
+if "result" in st.session_state:
+    res = st.session_state["result"]
+    research = res["research"]
 
+    st.divider()
+    st.header(f"📊 {res['company']} Situation")
+    st.info(research.get("SUMMARY", "No summary available."))
 
-def get_active(parsed):
-    active = []
-    for code in ["RC", "MP", "SG", "SCD"]:
-        if parsed[code + "_status"] in ("CONFIRMED", "LIKELY") and parsed[code + "_signal"]:
-            active.append({
-                "code": code,
-                "label": LABELS[code],
-                "score": parsed[code + "_score"],
-                "status": parsed[code + "_status"],
-                "signal": parsed[code + "_signal"],
-            })
-    return sorted(active, key=lambda x: -x["score"])
+    sources = research.get("SOURCES", [])
+    links = _render_sources(sources)
+    if links:
+        st.caption("🔗 **Sources:** " + " · ".join(links))
 
+    codes = [
+        ("RC", "🟡 Resource Constraints"),
+        ("SCD", "🔵 Supply Chain Disruption"),
+        ("MP", "🔴 Margin Pressure"),
+        ("SG", "🟢 Significant Growth"),
+    ]
+    cols = st.columns(4)
+    for i, (code, label) in enumerate(codes):
+        with cols[i]:
+            score = research.get(f"{code}_score", 0)
+            status = research.get(f"{code}_status", "UNCLEAR")
+            signal = research.get(f"{code}_signal", "")
+            st.markdown(f"**{label}**")
+            st.markdown(f"`{status}` ({score}/10)")
+            if signal:
+                st.markdown(signal)
 
-def _call_with_retry(client, model, contents, config, retries=2, wait=30):
-    for attempt in range(retries + 1):
-        try:
-            return client.models.generate_content(
-                model=model, contents=contents, config=config)
-        except Exception as e:
-            if "429" in str(e) and attempt < retries:
-                time.sleep(wait)
-                continue
-            raise
+    st.divider()
+    st.header("📝 Outreach Proposals")
+    st.write(res["situations"])
 
+    st.divider()
+    st.header("🏢 XIMPAX Positioning")
+    st.write(res["positioning"])
 
-def scan_company(company, api_key, industry_hint=""):
-    client = genai.Client(api_key=api_key)
-    prompt = PROMPT.format(
-        company=company,
-        industry_hint=industry_hint or "not specified"
+    data = {
+        "known_function": [res["function"]],
+        "company": [res["company"]],
+        "situation_notes": [res["situations"]],
+        "positioning_notes": [res["positioning"]],
+        "RC_score": [research.get("RC_score", 0)],
+        "RC_signal": [research.get("RC_signal", "")],
+        "RC_status": [research.get("RC_status", "")],
+        "SCD_score": [research.get("SCD_score", 0)],
+        "SCD_signal": [research.get("SCD_signal", "")],
+        "SCD_status": [research.get("SCD_status", "")],
+        "MP_score": [research.get("MP_score", 0)],
+        "MP_signal": [research.get("MP_signal", "")],
+        "MP_status": [research.get("MP_status", "")],
+        "SG_score": [research.get("SG_score", 0)],
+        "SG_signal": [research.get("SG_signal", "")],
+        "SG_status": [research.get("SG_status", "")],
+        "summary": [research.get("SUMMARY", "")],
+        "sources": [research.get("SOURCES", [])],
+    }
+    df = pd.DataFrame(data)
+    html_report = generate_html(df)
+    st.download_button(
+        "🌐 Download Report",
+        data=html_report.encode("utf-8"),
+        file_name=f"ximpax_{res['company'].lower().replace(' ', '_')}.html",
+        mime="text/html",
+        use_container_width=True
     )
-    try:
-        resp = _call_with_retry(
-            client, MODEL, prompt,
-            types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                temperature=0.1,
+
+with tab_batch:
+    st.subheader("Batch Process")
+    uploaded_file = st.file_uploader("Upload CSV (known_company, known_function, closeness_level)", type="csv")
+    if uploaded_file:
+        if st.button("▶️ Start Process"):
+            df_in = pd.read_csv(uploaded_file)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            def update_progress(current, total, msg):
+                progress_bar.progress(current / total)
+                status_text.text(msg)
+
+            res_df, _ = run_pipeline(df_in, gemini_key, update_progress)
+            st.success("Complete!")
+            html_batch = generate_html(res_df)
+            st.download_button(
+                "🌐 Download HTML Report",
+                data=html_batch.encode("utf-8"),
+                file_name="ximpax_batch_report.html",
+                mime="text/html"
             )
-        )
-        parsed = parse_result(resp.text)
-        # Extract all sources from grounding metadata
-        parsed["SOURCES"] = _extract_grounding_sources(resp)
-    except Exception as e:
-        parsed = parse_result("")
-        parsed["SUMMARY"] = f"Stage1 error for {company}: {str(e)}"
-        parsed["error"] = str(e)
-    finally:
-        time.sleep(PAUSE)
-    parsed["company"] = company
-    parsed["active_situations"] = get_active(parsed)
-    return parsed
+            st.dataframe(res_df)
