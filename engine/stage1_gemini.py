@@ -171,7 +171,23 @@ def _call_with_retry(client, model, contents, config, retries=2, wait=30):
                 continue
             raise
 
-
+def _get_full_response_text(resp):
+    """Collect all text parts from all candidates and join them."""
+    texts = []
+    try:
+        for candidate in (resp.candidates or []):
+            for part in (getattr(candidate.content, "parts", None) or []):
+                t = getattr(part, "text", None)
+                if t:
+                    texts.append(t)
+    except Exception:
+        pass
+    if texts:
+        return "\n".join(texts)
+    try:
+        return resp.text or ""
+    except Exception:
+        return ""
 def scan_company(company, api_key, industry_hint=""):
     client = genai.Client(api_key=api_key)
     prompt = PROMPT.format(
@@ -186,13 +202,7 @@ def scan_company(company, api_key, industry_hint=""):
                 temperature=0.1,
             )
         )
-        raw_text = resp.text if resp.text else ""
-        if not raw_text:
-            # Try extracting text from candidates directly
-            try:
-                raw_text = resp.candidates[0].content.parts[0].text or ""
-            except Exception:
-                raw_text = ""
+        raw_text = _get_full_response_text(resp)
         parsed = parse_result(raw_text)
         # Extract all sources from grounding metadata
         parsed["SOURCES"] = _extract_grounding_sources(resp)
