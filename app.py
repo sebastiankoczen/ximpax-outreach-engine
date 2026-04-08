@@ -69,7 +69,7 @@ with tab_single:
                     research = scan_company(target_company, gemini_key, target_function)
                     with st.expander("🔍 API Debug"):
                         st.text(f"Key loaded: {'YES' if gemini_key else 'NO - KEY MISSING'}")
-                        st.text(research.get("raw_output", "NO RAW OUTPUT")[:2000])
+                        st.text(research.get("raw_output", "NO RAW OUTPUT")[:5000])
                     if research.get("error"):
                         st.warning(f"⚠️ Research warning: {research['error']}")
                     situations = generate_situation_notes(
