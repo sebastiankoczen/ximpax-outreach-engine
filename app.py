@@ -28,12 +28,10 @@ def _render_sources(sources):
             if isinstance(s, dict):
                 title = s.get("title", "") or s.get("uri", "")
                 uri = s.get("uri", "")
-                date = s.get("date", "")
-                label = f"📅 {date} · {title}" if date else f"📅 ? · {title}"
                 if uri:
-                    links.append(f"[{label}]({uri})")
-                elif label:
-                    links.append(label)
+                    links.append(f"[{title}]({uri})")
+                elif title:
+                    links.append(title)
     elif isinstance(sources, str) and sources.strip():
         for ln in sources.strip().splitlines():
             ln = ln.strip().strip("-").strip()
@@ -48,7 +46,6 @@ def _render_sources(sources):
             else:
                 links.append(ln)
     return links
-
 
 with st.sidebar:
     st.header("🔍 Settings")
@@ -96,8 +93,6 @@ if "result" in st.session_state:
 
     st.divider()
     st.header(f"📊 {res['company']} Situation")
-    with st.expander("🔍 Debug: Raw Gemini Output"):
-        st.text(research.get("raw_output", "No raw output captured."))
 
     # Sources — clickable links from grounding metadata
     sources = research.get("SOURCES", [])
