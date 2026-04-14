@@ -13,13 +13,13 @@ def _fetch_article_date(uri, timeout=6):
     Returns 'YYYY-MM-DD' string or None.
     """
     DATE_PATTERNS = [
-        r'<meta[^>]+property=["']article:published_time["'][^>]+content=["']([^"'\s]+)',
-        r'<meta[^>]+content=["']([^"'\s]+)["'][^>]+property=["']article:published_time["']',
-        r'<meta[^>]+name=["'](?:date|pubdate|publish[_\-]?date|publication[_\-]?date|dc\.date)["'][^>]+content=["']([^"'\s]+)',
+        r"""<meta[^>]+property=['"]article:published_time['"][^>]+content=['"]([^'"\\s]+)""",
+        r"""<meta[^>]+content=['"]([^'"\\s]+)['"][^>]+property=['"]article:published_time['"]""",
+        r"""<meta[^>]+name=['"](?:date|pubdate|publish[_-]?date|publication[_-]?date|dc\.date)['"][^>]+content=['"]([^'"\\s]+)""",
         r'"datePublished"\s*:\s*"([^"]+)"',
         r'"publishedAt"\s*:\s*"([^"]+)"',
         r'"dateCreated"\s*:\s*"([^"]+)"',
-        r'<time[^>]+datetime=["']([^"'\s]+)',
+        r"""<time[^>]+datetime=['"]([^'"\\s]+)""",
     ]
 
     HEADERS = {
