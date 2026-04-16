@@ -23,7 +23,9 @@ def run_pipeline(df, gemini_key, progress_callback=None):
             company, function, research["active_situations"], gemini_key, closeness
         )
         positioning = generate_positioning_notes(
-            company, function, gemini_key, closeness
+            company, function, gemini_key, closeness,
+            active_situations=research["active_situations"],
+            summary=research.get("SUMMARY", ""),
         )
 
         # Combine
