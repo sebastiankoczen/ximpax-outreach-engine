@@ -56,11 +56,24 @@ Rules for each option:
 - NEVER use hedging phrases: "it seems", "I imagine", "I would assume", "presumably", "likely", "perhaps", "I noticed".
 - Write ONLY the 3 numbered options. No headers, no commentary, nothing else."""
 
-POSITIONING_SYSTEM = """You write short positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts.
-Generate exactly 3 short options (numbered 1. / 2. / 3.) that Sebastian can use to describe XIMPAX.
-Angle 1: External taskforce — hands-on, embedded, not advisory.
-Angle 2: Industry experts — deep functional knowledge, real operator experience.
-Angle 3: NOT a consultancy — direct contrast to typical consulting firms."""
+POSITIONING_SYSTEM = """You write short, company-specific positioning sentences for XIMPAX — a small Swiss team of senior supply chain and procurement experts who embed directly inside client teams.
+
+You will be given:
+- The contact's company name and job function
+- The 2-3 most important business signals found for that company (e.g. margin pressure, restructuring, growth)
+- A one-sentence summary of the company's situation
+
+Generate exactly 3 options (numbered 1. / 2. / 3.) that Sebastian can use verbally or in writing to position XIMPAX.
+
+Rules:
+- Each option must reference the SPECIFIC company situation — name the programme, the challenge, or the pressure the contact is facing
+- Each option uses a DIFFERENT angle:
+    Angle 1: External taskforce — hands-on, embedded, not advisory. Tie to a specific operational challenge at this company.
+    Angle 2: Industry experts with real operator experience. Tie to the functional domain of this contact.
+    Angle 3: NOT a consultancy — direct contrast to typical consulting firms. Tie to what this company actually needs right now.
+- 1-2 sentences per option. Plain language. No jargon.
+- NEVER use: resilience, optimise, leverage, synergies, value proposition, holistic, solutions, consultants, consulting.
+- Output ONLY the 3 numbered options. No headers, no commentary."""
 
 
 def _call_with_retry(client, model, contents, config, retries=2, wait=30):
@@ -74,7 +87,7 @@ def _call_with_retry(client, model, contents, config, retries=2, wait=30):
             raise
 
 
-def generate_situation_notes(company, function, active_situations, gemini_api_key) -> str:
+def generate_situation_notes(company, function, active_situations, gemini_api_key, closeness="") -> str:
     if not active_situations:
         return "No specific signals found - re-run Stage 1 or check research data."
     client = genai.Client(api_key=gemini_api_key)
@@ -110,9 +123,28 @@ Do NOT use: "I noticed", "it seems", "I imagine", "I would assume", "presumably"
         return f"[Error: {str(e)}]"
 
 
-def generate_positioning_notes(company, function, gemini_api_key) -> str:
+def generate_positioning_notes(company, function, gemini_api_key, closeness="",
+                                active_situations=None, summary="") -> str:
     client = genai.Client(api_key=gemini_api_key)
-    prompt = f"Generate 3 positioning options for XIMPAX for a contact at {company} in the {function} function."
+
+    # Build a compact signals block so the model knows what this company is actually facing
+    sig_lines = ""
+    if active_situations:
+        for s in (active_situations or [])[:3]:
+            # One-line summary per signal: label, status, first bullet only
+            first_bullet = s["signal"].split("\n")[0].lstrip("- ").strip()
+            sig_lines += f"- {s['label']} ({s['status']}): {first_bullet}\n"
+
+    prompt = f"""Generate 3 XIMPAX positioning options for Sebastian to use with:
+Contact role: {function}
+Company: {company}
+Company situation summary: {summary or 'Not available'}
+Key signals:
+{sig_lines or '- No specific signals available'}
+
+Each option must reference this specific company situation, not generic language.
+Output ONLY the 3 numbered options."""
+
     try:
         resp = _call_with_retry(
             client, MODEL, prompt,
