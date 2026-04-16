@@ -21,24 +21,17 @@ def _strip_preamble(text):
 
 
 def _render_sources(sources):
-    """Render sources as markdown links. Shows date badge if available."""
+    """Render sources (list of dicts or string) as markdown links."""
     links = []
     if isinstance(sources, list):
         for s in sources:
-            if not isinstance(s, dict):
-                continue
-            uri   = s.get("uri", "")
-            title = s.get("title", "") or uri
-            date  = s.get("date", "")
-            # Shorten label to just the domain for display
-            import re as _re
-            domain = _re.sub(r"https?://(www\.)?", "", title).split("/")[0]
-            label = domain if domain else title
-            date_part = f" `{date}`" if date else ""
-            if uri:
-                links.append(f"[{label}]({uri}){date_part}")
-            elif label:
-                links.append(label + date_part)
+            if isinstance(s, dict):
+                title = s.get("title", "") or s.get("uri", "")
+                uri = s.get("uri", "")
+                if uri:
+                    links.append(f"[{title}]({uri})")
+                elif title:
+                    links.append(title)
     elif isinstance(sources, str) and sources.strip():
         for ln in sources.strip().splitlines():
             ln = ln.strip().strip("-").strip()
@@ -57,12 +50,7 @@ def _render_sources(sources):
 
 with st.sidebar:
     st.header("🔍 Settings")
-    _secret_key = st.secrets.get("GEMINI_API_KEY", "")
-    if _secret_key:
-        gemini_key = _secret_key
-        st.success("✅ API key loaded from secrets")
-    else:
-        gemini_key = st.text_input("Gemini API Key", type="password")
+    gemini_key = st.text_input("Gemini API Key", type="password", value=st.secrets.get("GEMINI_API_KEY", ""))
 
 tab_single, tab_batch = st.tabs(["👤 Single Contact", "📂 Batch Processing"])
 
@@ -87,7 +75,9 @@ with tab_single:
                         target_company, target_function, research["active_situations"], gemini_key
                     )
                     positioning = generate_positioning_notes(
-                        target_company, target_function, gemini_key
+                        target_company, target_function, gemini_key,
+                        active_situations=research["active_situations"],
+                        summary=research.get("SUMMARY", ""),
                     )
                     st.session_state["result"] = {
                         "company": target_company,
@@ -112,13 +102,6 @@ if "result" in st.session_state:
     links = _render_sources(sources)
     if links:
         st.caption("🔗 **Sources:** " + " · ".join(links))
-    else:
-        st.caption("⚠️ No sources returned by Gemini grounding.")
-
-    # Debug expander — shows grounding metadata internals
-    with st.expander("🛠 Source debug info", expanded=False):
-        dbg = research.get("SOURCES_DEBUG", {})
-        st.json(dbg if dbg else {"note": "No debug info available (key not present in research dict)"})
 
     # Signals in order: RC, SCD, MP, SG
     codes = [
