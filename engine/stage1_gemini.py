@@ -111,9 +111,17 @@ def _enforce(score):
 
 
 def _prose_to_bullets(text, n=3):
-    """Split prose into up to n bullet points by sentence boundaries."""
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+    """
+    Split prose into up to n bullet points by sentence boundaries.
+    Handles abbreviations (U.S., e.g., Dr., etc.) to avoid false splits.
+    """
+    # Temporarily mask known abbreviations so their periods don't trigger splits
+    ABBREVS = r"\b(?:U\.S|U\.K|e\.g|i\.e|Dr|Mr|Mrs|Ms|St|vs|approx|est|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec|CHF|EUR|USD)\.(?=\s)"
+    masked = re.sub(ABBREVS, lambda m: m.group(0).replace(".", "\x00"), text.strip())
+    # Split on sentence-ending punctuation followed by whitespace
+    parts = re.split(r'(?<=[.!?])\s+', masked)
+    # Restore masked periods
+    sentences = [p.replace("\x00", ".").strip() for p in parts if len(p.strip()) > 15]
     if not sentences:
         return text
     if len(sentences) <= n:
@@ -231,19 +239,24 @@ def parse_result(text):
             else:
                 signal = _prose_to_bullets(raw_signal, n=3)
         else:
+            # Fallback: only accept a score if we can also extract real signal text.
+            # This prevents "10/no signal" results when Gemini uses a non-standard format.
             fallback = rf"(?i){code}\s*:[^\d]*(\d+)"
             mf = re.search(fallback, clean)
             if mf:
-                score = min(int(mf.group(1)), 10)
+                candidate_score = min(int(mf.group(1)), 10)
                 txt_pat = rf"(?i){code}\s*:[^|]*?\d+.*?\|?.*?\|?\s*(.+?)(?=\n(?:RC|MP|SG|SCD|SUMMARY|SOURCES)|$)"
                 mt = re.search(txt_pat, clean, re.DOTALL)
                 if mt:
                     raw_signal = mt.group(1).strip()
-                    bullet_lines = re.findall(r"^\s*[-\u2022]\s*(.+)", raw_signal, re.MULTILINE)
-                    if len(bullet_lines) >= 2:
-                        signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
-                    else:
-                        signal = _prose_to_bullets(raw_signal, n=3)
+                    if len(raw_signal) > 20:   # only accept if there's real text
+                        score = candidate_score
+                        bullet_lines = re.findall(r"^\s*[-\u2022]\s*(.+)", raw_signal, re.MULTILINE)
+                        if len(bullet_lines) >= 2:
+                            signal = "\n".join(f"- {b.strip()}" for b in bullet_lines[:3])
+                        else:
+                            signal = _prose_to_bullets(raw_signal, n=3)
+                    # else: leave score=0, signal="" — better than 10/blank
         out[code + "_score"] = score
         out[code + "_status"] = _enforce(score)
         out[code + "_signal"] = signal
